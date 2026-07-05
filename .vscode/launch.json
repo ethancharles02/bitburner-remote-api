@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attach to Bitburner",
+      "type": "chrome",
+      "request": "attach",
+      "port": 9222,
+      "webRoot": "${workspaceFolder}",
+      "sourceMaps": true,
+      "skipFiles": [
+        "node_modules/**/*.js",
+        "<node_internals>/**"
+      ],
+      "sourceMapPathOverrides": {
+        "../../src/*": "${workspaceFolder}/src/*",
+      }
+    }
+  ]
+}
