@@ -1,8 +1,8 @@
 import { NS } from "@ns";
 
-export async function main(ns: NS) {
+export function buyHacknetNodes(ns: NS) {
     // Buy all possible nodes first
-    while (ns.hacknet.purchaseNode() != -1) { };
+    while (ns.hacknet.purchaseNode() != -1);
 
     // Loop through these functions maxing out the first one and going down the list after that
     const upgradeFuncs = [
@@ -13,13 +13,19 @@ export async function main(ns: NS) {
     ];
 
     const numNodes = ns.hacknet.numNodes();
-    for (const upgradeFunc of upgradeFuncs) {
-        let upgradeSuccessful = true;
-        while (upgradeSuccessful) {
-            upgradeSuccessful = false;
+    let upgradeSuccessful = true;
+    while (upgradeSuccessful) {
+        upgradeSuccessful = false;
+        for (const upgradeFunc of upgradeFuncs) {
             for (let i = 0; i < numNodes; i++) {
-                upgradeSuccessful ||= upgradeFunc(i);
+                // Can't directly do or-equals because of short circuiting
+                const result = upgradeFunc(i);
+                upgradeSuccessful ||= result;
             }
         }
     }
+}
+
+export async function main(ns: NS) {
+    buyHacknetNodes(ns);
 }

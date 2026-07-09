@@ -2,9 +2,6 @@ import { NS } from "@ns";
 
 /**
  * Opens all possible ports on a target and nukes them
- * @param {NS} ns
- * @param {string} target - Target server host name
- * @returns {boolean} If the target was successfully nuked
  * */
 export function openTarget(ns: NS, target: string): boolean {
     const portScripts = {
@@ -26,9 +23,6 @@ export function openTarget(ns: NS, target: string): boolean {
 
 /**
  * Gets a list of all servers
- * @param {NS} ns
- * @param {string} startTarget
- * @returns {Set<string>} List of servers
  * */
 export function getAllServers(ns: NS, startTarget: string, parentTarget = ""): Set<string> {
     const servers = new Set(ns.scan(startTarget));
@@ -44,8 +38,6 @@ export function getAllServers(ns: NS, startTarget: string, parentTarget = ""): S
 
 /**
  * Gets a list of all servers (after attempting to hack them) with root access
- * @param {NS} ns
- * @returns {Set<string>} List of servers with root access
  * */
 export function hackAndGetAllAccessServers(ns: NS): Set<string> {
     const hackedServers: Set<string> = new Set();
@@ -62,8 +54,6 @@ export function hackAndGetAllAccessServers(ns: NS): Set<string> {
 
 /**
  * Gets a list of all servers (after attempting to hack them) with root access
- * @param {NS} ns
- * @returns {string} List of servers with root access
  * */
 export function getMaxMoneyServer(ns: NS) {
     const servers = hackAndGetAllAccessServers(ns);
@@ -82,16 +72,9 @@ export function getMaxMoneyServer(ns: NS) {
     return maxServer;
 }
 
-/**
- * Gets a list of all servers (after attempting to hack them) with root access
- * @param {NS} ns
- * @returns {string} List of servers with root access
- * */
-export function getMostLucrativeServer(ns: NS) {
-    const servers = hackAndGetAllAccessServers(ns);
+export function getSortedLucrativeServers(ns: NS) {
+    const servers = [...hackAndGetAllAccessServers(ns)];
     let curVal = 0;
-    let maxVal = 0;
-    let maxServer = "home";
     const player = ns.getPlayer();
     const formulasExists = ns.fileExists("Formulas.exe");
     if (formulasExists) {
@@ -99,6 +82,7 @@ export function getMostLucrativeServer(ns: NS) {
     } else {
         ns.tprintf("Heuristic Utility Estimation:");
     }
+    const serversValues: Record<string, number> = {};
     for (const server of servers) {
         if (formulasExists) {
             const mockServerObj = ns.getServer(server);
@@ -110,21 +94,26 @@ export function getMostLucrativeServer(ns: NS) {
             // Utility of server
             curVal = (hackPerc * moneyMax) / hackT;
             // curVal = (hackPerc * moneyMax);
+            serversValues[server] = curVal;
         } else {
             // Estimated utility of server
             curVal = ns.getServerMaxMoney(server) / ns.getServerMinSecurityLevel(server);
-        }
-        ns.tprintf("\t%s: %f", server, curVal);
-        if (curVal > maxVal) {
-            maxVal = curVal;
-            maxServer = server;
+            serversValues[server] = curVal;
         }
     }
 
-    return maxServer;
+    const sortedServers = servers.sort((a: string, b: string) => serversValues[b] - serversValues[a])
+    for (const server of sortedServers) {
+        ns.tprintf("\t%s: %f", server, serversValues[server]);
+    }
+
+    return sortedServers;
 }
 
-/** @param {NS} ns */
+export function getMostLucrativeServer(ns: NS) {
+    return getSortedLucrativeServers(ns)[0];
+}
+
 export async function main(ns: NS) {
     const server = getAllServers(ns, "home");
     ns.tprint(server);
