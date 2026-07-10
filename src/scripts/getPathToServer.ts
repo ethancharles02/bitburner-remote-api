@@ -19,7 +19,6 @@ export function getPathToServer(ns: NS, target: string) {
     if (!ns.serverExists(target)) {
         return [];
     }
-    // TODO Set up autocomplete for the cn function so we can autocomplete servers?
     const startTarget = "home";
     const helper = function (curServer: string, parentServer: string): Array<string> {
         if (curServer == target) {

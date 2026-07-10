@@ -3,18 +3,22 @@ import { NS } from "@ns";
 export class ScriptRunner {
     scriptsRamCost: Record<string, number>;
     hostname: string;
-    additionalAllottedRam: number;
+    allottedRam: number;
     ns: NS;
     availableRam: number;
+    // PID -> Ram Usage
+    runningScripts: Record<string, number>;
 
     /**
      * @param {NS} ns
      * @param {string} hostname Name of host who will be running scripts
      * */
-    constructor(ns: NS, hostname: string, additionalAllottedRam: number) {
+    constructor(ns: NS, hostname: string, allottedRam: number | undefined = undefined) {
         this.scriptsRamCost = {};
         this.hostname = hostname;
-        this.additionalAllottedRam = additionalAllottedRam;
+        this.allottedRam = allottedRam ?? ns.getServerMaxRam(hostname);
+
+        this.runningScripts = {};
         this.ns = ns;
 
         this.availableRam = 0;
@@ -22,7 +26,22 @@ export class ScriptRunner {
     }
 
     refreshAvailableRam() {
-        this.availableRam = (this.ns.getServerMaxRam(this.hostname) - this.ns.getServerUsedRam(this.hostname)) - this.additionalAllottedRam;
+        let totalramUsed = 0;
+        const pidsToDelete: number[] = [];
+        for (const [pid, ramUsed] of Object.entries(this.runningScripts)) {
+            const numPid = Number(pid);
+            if (this.ns.isRunning(numPid)) {
+                totalramUsed += ramUsed;
+            } else {
+                pidsToDelete.push(numPid);
+            }
+        }
+
+        for (const pid of pidsToDelete) {
+            delete this.runningScripts[pid];
+        }
+
+        this.availableRam = this.allottedRam - totalramUsed;
     }
 
     /**
@@ -82,7 +101,9 @@ export class ScriptRunner {
             this.ns.printf("Not enough ram available for any threads: %s", scriptPath);
             return 0;
         }
-        return this.ns.exec(scriptPath, this.hostname, { threads: numThreads }, ...scriptArgs);
+        const pid = this.ns.exec(scriptPath, this.hostname, { threads: numThreads }, ...scriptArgs);
+        this.runningScripts[pid] = this.scriptsRamCost[scriptPath] * numThreads;
+        return pid;
     }
 }
 
@@ -106,17 +127,26 @@ export class ScriptRunnerManager {
      * @param {bool} refreshScript Forcibly redownloads the script to the server
      * @returns {bool} If script was successfully added
      * */
-    addHost(hostname: string, additionalAllottedRam: number) {
+    addHost(hostname: string, allottedRam: number | undefined = undefined) {
         if (!this.ns.serverExists(hostname)) {
             this.ns.printf("Couldn't find server with name: %s", hostname);
         }
 
-        this.hosts[hostname] = new ScriptRunner(this.ns, hostname, additionalAllottedRam);
+        this.hosts[hostname] = new ScriptRunner(this.ns, hostname, allottedRam);
     }
 
     invalidHostname(hostname: string) {
         this.ns.printf("Couldn't find hostname in hosts: %s", hostname);
         throw Error("No Hostname. See log");
+    }
+
+    getThreadsAvailableObj(scriptPath: string): Record<string, number> {
+        const threadsAvailable: Record<string, number> = {};
+        for (const [hostname, scriptRunner] of Object.entries(this.hosts)) {
+            scriptRunner.refreshAvailableRam();
+            threadsAvailable[hostname] = scriptRunner.getMaxThreadsForScript(scriptPath);
+        }
+        return threadsAvailable
     }
 
     /**

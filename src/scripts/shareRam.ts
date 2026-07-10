@@ -4,13 +4,13 @@ import { ScriptRunnerManager } from "/scripts/scriptRunner.js";
 
 export async function main(ns: NS) {
     const servers = hackAndGetAllAccessServers(ns);
-    const additionalAllottedRam = 16;
+    const reservedRam = 128;
 
     const scriptRunnerManager = new ScriptRunnerManager(ns);
-    scriptRunnerManager.addHost("home", additionalAllottedRam);
+    scriptRunnerManager.addHost("home", ns.getServerMaxRam("home") - reservedRam);
     // When running multiple cores,
     for (const server of servers) {
-        scriptRunnerManager.addHost(server, 0);
+        scriptRunnerManager.addHost(server);
     }
     scriptRunnerManager.addScript("share.ts", true, true);
 

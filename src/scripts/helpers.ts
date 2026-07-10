@@ -91,18 +91,20 @@ export function getSortedLucrativeServers(ns: NS) {
             mockServerObj.moneyAvailable = moneyMax;
             const hackPerc = ns.formulas.hacking.hackPercent(mockServerObj, player);
             const hackT = ns.formulas.hacking.hackTime(mockServerObj, player);
+            const hackChance = ns.formulas.hacking.hackChance(mockServerObj, player);
             // Utility of server
-            curVal = (hackPerc * moneyMax) / hackT;
+            curVal = (hackPerc * moneyMax * hackChance) / hackT;
             // curVal = (hackPerc * moneyMax);
-            serversValues[server] = curVal;
         } else {
             // Estimated utility of server
             curVal = ns.getServerMaxMoney(server) / ns.getServerMinSecurityLevel(server);
+        }
+        if (curVal > 0) {
             serversValues[server] = curVal;
         }
     }
 
-    const sortedServers = servers.sort((a: string, b: string) => serversValues[b] - serversValues[a])
+    const sortedServers = Object.keys(serversValues).sort((a: string, b: string) => serversValues[b] - serversValues[a])
     for (const server of sortedServers) {
         ns.tprintf("\t%s: %f", server, serversValues[server]);
     }

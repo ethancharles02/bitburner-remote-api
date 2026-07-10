@@ -38,7 +38,7 @@ async function prepServer(
             numWeakenThreads += 1;
         }
 
-        ns.tprintf("Counteracting grow:\n\tGrow: %d\n\tWeaken: %d", numGrowThreads, numWeakenThreads);
+        ns.tprintf("%s Counteracting grow:\n\tGrow: %d\n\tWeaken: %d", target, numGrowThreads, numWeakenThreads);
 
         const bufferTimeMs = 20;
         const weakenTimeMs = ns.getWeakenTime(target);
@@ -57,6 +57,102 @@ async function prepServer(
     }
 }
 
+type ThreadStats = {
+    readonly numHackThreadsRaw: number;
+    readonly numHackThreads: number;
+    readonly numHackWeakenThreadsRaw: number;
+    readonly numHackWeakenThreads: number;
+    readonly numGrowthThreadsRaw: number;
+    readonly numGrowThreads: number;
+    readonly numGrowWeakenThreadsRaw: number;
+    readonly numGrowWeakenThreads: number;
+    readonly maxTime: number;
+    readonly additionalHackTimeMs: number;
+    readonly additionalGrowTimeMs: number;
+    readonly additionalWeakenTimeMs: number;
+}
+
+type BatchStats = {
+    readonly threadStats: ThreadStats;
+    readonly bufferTimeMs: number;
+    readonly numBatches: number;
+}
+
+export function getThreadStats(ns: NS, target: string, amountToHack: number, numCores: number) {
+
+    const player = ns.getPlayer();
+    const optimalServer = ns.getServer(target);
+    const optimalLowMoneyServer = ns.getServer(target);
+    optimalServer.moneyAvailable = optimalServer.moneyMax;
+    optimalServer.hackDifficulty = optimalServer.minDifficulty;
+    optimalLowMoneyServer.hackDifficulty = optimalLowMoneyServer.minDifficulty;
+    const weakenAmount = ns.weakenAnalyze(1, numCores);
+
+    const moneyThresh = optimalLowMoneyServer.moneyMax ?? 0;
+    if (moneyThresh == 0) {
+        throw Error("Shouldn't be getting batchstats for a server with no max money");
+    }
+
+    const numHackThreadsRaw = amountToHack / ns.formulas.hacking.hackPercent(optimalServer, player);
+    const numHackThreads = Math.max(Math.floor(numHackThreadsRaw), 1);
+
+    const numHackWeakenThreadsRaw = ns.hackAnalyzeSecurity(numHackThreads) / weakenAmount;
+    const numHackWeakenThreads = Math.ceil(numHackWeakenThreadsRaw);
+
+    optimalLowMoneyServer.moneyAvailable = moneyThresh - (moneyThresh * amountToHack);
+    const numGrowthThreadsRaw = ns.formulas.hacking.growThreads(optimalLowMoneyServer, player, moneyThresh, numCores);
+    const numGrowThreads = Math.ceil(numGrowthThreadsRaw);
+
+    const numGrowWeakenThreadsRaw = ns.growthAnalyzeSecurity(numGrowThreads, undefined, numCores) / weakenAmount;
+    const numGrowWeakenThreads = Math.ceil(numGrowWeakenThreadsRaw);
+    const hackTimeMs = ns.getHackTime(target);
+    const weakenTimeMs = ns.getWeakenTime(target);
+    const growTimeMs = ns.getGrowTime(target);
+
+    const maxTime = Math.max(hackTimeMs, weakenTimeMs, growTimeMs);
+    const additionalHackTimeMs = maxTime - hackTimeMs;
+    const additionalGrowTimeMs = maxTime - growTimeMs;
+    const additionalWeakenTimeMs = maxTime - weakenTimeMs;
+    const threadStats: ThreadStats = {
+        numHackThreadsRaw: numHackThreadsRaw,
+        numHackWeakenThreadsRaw: numHackWeakenThreadsRaw,
+        numGrowthThreadsRaw: numGrowthThreadsRaw,
+        numGrowWeakenThreadsRaw: numGrowWeakenThreadsRaw,
+        numHackThreads: numHackThreads,
+        numHackWeakenThreads: numHackWeakenThreads,
+        numGrowThreads: numGrowThreads,
+        numGrowWeakenThreads: numGrowWeakenThreads,
+        maxTime: maxTime,
+        additionalHackTimeMs: additionalHackTimeMs,
+        additionalGrowTimeMs: additionalGrowTimeMs,
+        additionalWeakenTimeMs: additionalWeakenTimeMs,
+    }
+    return threadStats;
+}
+
+export function getRequiredThreadsForBatch(ns: NS, target: string, amountToHack: number, numCores: number, targetBufferTime: number) {
+    const threadStats = getThreadStats(ns, target, amountToHack, numCores);
+    const numBatches = threadStats.maxTime / (targetBufferTime * 4);
+    const requiredThreads = numBatches * ((threadStats.numHackThreads + threadStats.numHackWeakenThreads + threadStats.numGrowThreads + threadStats.numGrowWeakenThreads) * 2);
+
+    return requiredThreads;
+}
+
+export function getBatchStats(ns: NS, target: string, amountToHack: number, numCores: number, estimatedNumAvailableThreads: number) {
+    const threadStats = getThreadStats(ns, target, amountToHack, numCores);
+
+    // The number of batches as spreading out half of all available threads (allowing us to assign the second half of threads after the first hack and keep a consistent income)
+    const numBatches = Math.floor(estimatedNumAvailableThreads / ((threadStats.numHackThreads + threadStats.numHackWeakenThreads + threadStats.numGrowThreads + threadStats.numGrowWeakenThreads) * 2));
+    const bufferTimeMs = Math.ceil(threadStats.maxTime / (numBatches * 4));
+
+    const batchStats: BatchStats = {
+        threadStats: threadStats,
+        bufferTimeMs: bufferTimeMs,
+        numBatches: numBatches
+    }
+    return batchStats;
+}
+
 export async function smartHack(
         ns: NS,
         scriptRunnerManager: ScriptRunnerManager,
@@ -65,27 +161,14 @@ export async function smartHack(
         batchHostname: string,
         bufferTimeLimitMs: number,
         target: string) {
-    const formulasExists = ns.fileExists("Formulas.exe");
-    const optimalServer = ns.getServer(target);
-    const optimalLowMoneyServer = ns.getServer(target);
-    const player = ns.getPlayer();
-    if (formulasExists) {
-        optimalServer.moneyAvailable = optimalServer.moneyMax;
-        optimalServer.hackDifficulty = optimalServer.minDifficulty;
-        optimalLowMoneyServer.hackDifficulty = optimalLowMoneyServer.minDifficulty;
-    }
     let numCores = 1;
     if (batchHostname != "") {
         numCores = ns.getServer(batchHostname).cpuCores;
     }
 
-    // TODO refactor out to a function that takes a target and a script runner manager? Set up
-    // two separate processes where one uses home and the other uses our other servers to hack
-    // the second most lucrative server
     const weakenAmount = ns.weakenAnalyze(1, numCores);
     const moneyThresh = ns.getServerMaxMoney(target);
     const securityThresh = ns.getServerMinSecurityLevel(target);
-    const moneyAmount = moneyThresh * amountToHack;
 
     const curMoney = ns.getServerMoneyAvailable(target);
     const curSecurity = ns.getServerSecurityLevel(target);
@@ -102,59 +185,40 @@ export async function smartHack(
     let batchSetCount = 0;
     while (performance.now() - oldTime < batchResetTimeMs) {
         ns.tprintf("\n%s Batch Set: %d", target, batchSetCount);
-        const numHackThreadsRaw = formulasExists ? amountToHack / ns.formulas.hacking.hackPercent(optimalServer, player) : ns.hackAnalyzeThreads(target, moneyAmount);
-        const numHackThreads = Math.max(Math.floor(numHackThreadsRaw), 1);
+        const batchStats = getBatchStats(ns, target, amountToHack, numCores, estimatedNumAvailableThreads);
 
-        const numHackWeakenThreadsRaw = ns.hackAnalyzeSecurity(numHackThreads) / weakenAmount;
-        const numHackWeakenThreads = Math.ceil(numHackWeakenThreadsRaw);
+        ns.tprintf("Raw Batch:\n\tHack: %f\n\tWeaken: %f\n\tGrow: %f\n\tWeaken: %f", batchStats.threadStats.numHackThreadsRaw, batchStats.threadStats.numHackWeakenThreadsRaw, batchStats.threadStats.numGrowthThreadsRaw, batchStats.threadStats.numGrowWeakenThreadsRaw);
+        ns.tprintf("Adjusted Batch:\n\tHack: %d\n\tWeaken: %d\n\tGrow: %d\n\tWeaken: %d", batchStats.threadStats.numHackThreads, batchStats.threadStats.numHackWeakenThreads, batchStats.threadStats.numGrowThreads, batchStats.threadStats.numGrowWeakenThreads);
 
-        optimalLowMoneyServer.moneyAvailable = moneyThresh - moneyAmount;
-        const numGrowthThreadsRaw = formulasExists ? ns.formulas.hacking.growThreads(optimalLowMoneyServer, player, moneyThresh, numCores) : ns.growthAnalyze(target, moneyThresh / (moneyThresh - moneyAmount), numCores);
-        const numGrowThreads = Math.ceil(numGrowthThreadsRaw);
-
-        const numGrowWeakenThreadsRaw = ns.growthAnalyzeSecurity(numGrowThreads, undefined, numCores) / weakenAmount;
-        const numGrowWeakenThreads = Math.ceil(numGrowWeakenThreadsRaw);
-        const hackTimeMs = ns.getHackTime(target);
-        const weakenTimeMs = ns.getWeakenTime(target);
-        const growTimeMs = ns.getGrowTime(target);
-
-        const maxTime = Math.max(hackTimeMs, weakenTimeMs, growTimeMs);
-        const additionalHackTimeMs = maxTime - hackTimeMs;
-        const additionalGrowTimeMs = maxTime - growTimeMs;
-        const additionalWeakenTimeMs = maxTime - weakenTimeMs;
-
-        ns.tprintf("Raw Batch:\n\tHack: %f\n\tWeaken: %f\n\tGrow: %f\n\tWeaken: %f", numHackThreadsRaw, numHackWeakenThreadsRaw, numGrowthThreadsRaw, numGrowWeakenThreadsRaw);
-        ns.tprintf("Adjusted Batch:\n\tHack: %d\n\tWeaken: %d\n\tGrow: %d\n\tWeaken: %d", numHackThreads, numHackWeakenThreads, numGrowThreads, numGrowWeakenThreads);
-
-        // The number of batches as spreading out half of all available threads (allowing us to assign the second half of threads after the first hack and keep a consistent income)
-        const numBatches = Math.floor(estimatedNumAvailableThreads / ((numHackThreads + numHackWeakenThreads + numGrowThreads + numGrowWeakenThreads) * 2));
         ns.tprintf("Batch Stats:");
         ns.tprintf("\tnumAvailableThreads: %d", estimatedNumAvailableThreads);
-        if (numBatches == 0) {
-            throw Error("0 Batches were calculated as available");
+        if (batchStats.numBatches == 0) {
+            ns.tprint("WARNING: 0 Batches were calculated as available");
+            return;
+            // throw Error("0 Batches were calculated as available");
         }
-        let bufferTimeMs = Math.ceil(maxTime / (numBatches * 4));
+        let bufferTimeMs = batchStats.bufferTimeMs;
         // Prevent buffer time from getting too low
         if (bufferTimeMs < bufferTimeLimitMs) {
             ns.tprintf("WARNING: Buffer time could go less than %d ms. You can probably hack a more lucrative server", bufferTimeLimitMs)
             bufferTimeMs = bufferTimeLimitMs;
         }
 
-        ns.tprintf("\tNumBatches: %d\n\tBufferTime: %d", numBatches, bufferTimeMs);
+        ns.tprintf("\tNumBatches: %d\n\tBufferTime: %d", batchStats.numBatches, batchStats.bufferTimeMs);
         const firstProcessIds = [];
         lastProcessIds = [];
-        for (let i = 0; i < numBatches; i++) {
+        for (let i = 0; i < batchStats.numBatches; i++) {
             const adjustedCount = i * 4;
-            await scriptRunnerManager.runScript("hack.js", batchHostname, false, numHackThreads, false, target, String(additionalHackTimeMs + bufferTimeMs * adjustedCount));
-            await scriptRunnerManager.runScript("weaken.js", batchHostname, false, numHackWeakenThreads, false, target, String(additionalWeakenTimeMs + bufferTimeMs * (adjustedCount + 1)));
-            await scriptRunnerManager.runScript("grow.js", batchHostname, false, numGrowThreads, false, target, String(additionalGrowTimeMs + bufferTimeMs * (adjustedCount + 2)));
+            await scriptRunnerManager.runScript("hack.js", batchHostname, false, batchStats.threadStats.numHackThreads, false, target, String(batchStats.threadStats.additionalHackTimeMs + bufferTimeMs * adjustedCount));
+            await scriptRunnerManager.runScript("weaken.js", batchHostname, false, batchStats.threadStats.numHackWeakenThreads, false, target, String(batchStats.threadStats.additionalWeakenTimeMs + bufferTimeMs * (adjustedCount + 1)));
+            await scriptRunnerManager.runScript("grow.js", batchHostname, false, batchStats.threadStats.numGrowThreads, false, target, String(batchStats.threadStats.additionalGrowTimeMs + bufferTimeMs * (adjustedCount + 2)));
 
             if (i == 0) {
-                firstProcessIds.push(...await scriptRunnerManager.runScript("weaken.js", batchHostname, false, numGrowWeakenThreads, false, target, String(additionalWeakenTimeMs + bufferTimeMs * (adjustedCount + 3))));
-            } else if (i == numBatches - 1) {
-                lastProcessIds.push(...await scriptRunnerManager.runScript("weaken.js", batchHostname, false, numGrowWeakenThreads, false, target, String(additionalWeakenTimeMs + bufferTimeMs * (adjustedCount + 3))));
+                firstProcessIds.push(...await scriptRunnerManager.runScript("weaken.js", batchHostname, false, batchStats.threadStats.numGrowWeakenThreads, false, target, String(batchStats.threadStats.additionalWeakenTimeMs + bufferTimeMs * (adjustedCount + 3))));
+            } else if (i == batchStats.numBatches - 1) {
+                lastProcessIds.push(...await scriptRunnerManager.runScript("weaken.js", batchHostname, false, batchStats.threadStats.numGrowWeakenThreads, false, target, String(batchStats.threadStats.additionalWeakenTimeMs + bufferTimeMs * (adjustedCount + 3))));
             } else {
-                await scriptRunnerManager.runScript("weaken.js", batchHostname, false, numGrowWeakenThreads, false, target, String(additionalWeakenTimeMs + bufferTimeMs * (adjustedCount + 3)));
+                await scriptRunnerManager.runScript("weaken.js", batchHostname, false, batchStats.threadStats.numGrowWeakenThreads, false, target, String(batchStats.threadStats.additionalWeakenTimeMs + bufferTimeMs * (adjustedCount + 3)));
             }
         }
         let isSafe = false;
@@ -180,18 +244,23 @@ export async function main(ns: NS) {
     ns.disableLog("sleep");
 
     if (ns.args.length > 0) {
-        const additionalAllottedRam = Number(ns.args[0]);
-        const batchResetTimeMs = Number(ns.args[1]);
-        const amountToHack = Number(ns.args[2]);
+        const numRequiredArgs = 5;
+        const batchResetTimeMs = Number(ns.args[0]);
+        const amountToHack = Number(ns.args[1]);
         // Since our calculations include our cores (more than 1), we can only use home, otherwise, we could use ""
         // const batchHostname = "";
-        const batchHostname = String(ns.args[3]);
-        const bufferTimeLimitMs = Number(ns.args[4]);
-        const target = String(ns.args[5]);
-        const servers = ns.args.slice(6, ns.args.length);
+        const batchHostname = String(ns.args[2]);
+        const bufferTimeLimitMs = Number(ns.args[3]);
+        const target = String(ns.args[4]);
+        if ((ns.args.length - numRequiredArgs) % 2 != 0) {
+            throw Error("Wrong number of args passed to smart hack");
+        }
+        const numHosts = Math.floor((ns.args.length - numRequiredArgs) / 2);
+        const hosts = ns.args.slice(numRequiredArgs, ns.args.length - numHosts);
+        const allottedRamByHost = ns.args.slice(numRequiredArgs + numHosts, ns.args.length);
         const scriptRunnerManager = new ScriptRunnerManager(ns);
-        for (const server of servers) {
-            scriptRunnerManager.addHost(String(server), additionalAllottedRam);
+        for (let i = 0; i < hosts.length; i++) {
+            scriptRunnerManager.addHost(String(hosts[i]), Number(allottedRamByHost[i]));
         }
         scriptRunnerManager.addScript("weaken.js", true, true);
         scriptRunnerManager.addScript("grow.js", true, true);
@@ -200,18 +269,18 @@ export async function main(ns: NS) {
         // const target = "iron-gym";
         await smartHack(ns, scriptRunnerManager, batchResetTimeMs, amountToHack, batchHostname, bufferTimeLimitMs, target);
     } else {
-        const additionalAllottedRam = 8;
+        const reservedRam = 8;
         const batchResetTimeMs = 1000 * 60 * 30;
-        const amountToHack = 0.026;
+        const amountToHack = 0.1;
         // Since our calculations include our cores (more than 1), we can only use home, otherwise, we could use ""
         // const batchHostname = "";
         const batchHostname = "home";
         const bufferTimeLimitMs = 200;
         const scriptRunnerManager = new ScriptRunnerManager(ns);
-        scriptRunnerManager.addHost("home", additionalAllottedRam);
+        scriptRunnerManager.addHost("home", ns.getServerMaxRam("home") - reservedRam);
         // When running multiple cores,
         for (const server of hackAndGetAllAccessServers(ns)) {
-            scriptRunnerManager.addHost(server, 0);
+            scriptRunnerManager.addHost(server);
         }
         scriptRunnerManager.addScript("weaken.js", true, true);
         scriptRunnerManager.addScript("grow.js", true, true);
