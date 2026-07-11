@@ -86,12 +86,13 @@ export function getThreadStats(ns: NS, target: string, amountToHack: number, num
     optimalServer.moneyAvailable = optimalServer.moneyMax;
     optimalServer.hackDifficulty = optimalServer.minDifficulty;
     optimalLowMoneyServer.hackDifficulty = optimalLowMoneyServer.minDifficulty;
-    const weakenAmount = ns.weakenAnalyze(1, numCores);
-
     const moneyThresh = optimalLowMoneyServer.moneyMax ?? 0;
+    optimalLowMoneyServer.moneyAvailable = moneyThresh - (moneyThresh * amountToHack);
     if (moneyThresh == 0) {
         throw Error("Shouldn't be getting batchstats for a server with no max money");
     }
+
+    const weakenAmount = ns.weakenAnalyze(1, numCores);
 
     const numHackThreadsRaw = amountToHack / ns.formulas.hacking.hackPercent(optimalServer, player);
     const numHackThreads = Math.max(Math.floor(numHackThreadsRaw), 1);
@@ -99,12 +100,12 @@ export function getThreadStats(ns: NS, target: string, amountToHack: number, num
     const numHackWeakenThreadsRaw = ns.hackAnalyzeSecurity(numHackThreads) / weakenAmount;
     const numHackWeakenThreads = Math.ceil(numHackWeakenThreadsRaw);
 
-    optimalLowMoneyServer.moneyAvailable = moneyThresh - (moneyThresh * amountToHack);
     const numGrowthThreadsRaw = ns.formulas.hacking.growThreads(optimalLowMoneyServer, player, moneyThresh, numCores);
     const numGrowThreads = Math.ceil(numGrowthThreadsRaw);
 
     const numGrowWeakenThreadsRaw = ns.growthAnalyzeSecurity(numGrowThreads, undefined, numCores) / weakenAmount;
     const numGrowWeakenThreads = Math.ceil(numGrowWeakenThreadsRaw);
+
     const hackTimeMs = ns.getHackTime(target);
     const weakenTimeMs = ns.getWeakenTime(target);
     const growTimeMs = ns.getGrowTime(target);
@@ -193,9 +194,9 @@ export async function smartHack(
         ns.tprintf("Batch Stats:");
         ns.tprintf("\tnumAvailableThreads: %d", estimatedNumAvailableThreads);
         if (batchStats.numBatches == 0) {
-            ns.tprint("WARNING: 0 Batches were calculated as available");
-            return;
-            // throw Error("0 Batches were calculated as available");
+            // ns.tprint("WARNING: 0 Batches were calculated as available");
+            // return;
+            throw Error("0 Batches were calculated as available");
         }
         let bufferTimeMs = batchStats.bufferTimeMs;
         // Prevent buffer time from getting too low
@@ -269,26 +270,26 @@ export async function main(ns: NS) {
         // const target = "iron-gym";
         await smartHack(ns, scriptRunnerManager, batchResetTimeMs, amountToHack, batchHostname, bufferTimeLimitMs, target);
     } else {
-        const reservedRam = 8;
+        // Make sure there is enough Ram for this script to run at least
+        const reservedRam = ns.getScriptRam("/scripts/smartHack.js") + 4;
         const batchResetTimeMs = 1000 * 60 * 30;
-        const amountToHack = 0.1;
+        const amountToHack = 0.01;
         // Since our calculations include our cores (more than 1), we can only use home, otherwise, we could use ""
-        // const batchHostname = "";
-        const batchHostname = "home";
+        const batchHostname = "";
+        // const batchHostname = "home";
         const bufferTimeLimitMs = 200;
-        const scriptRunnerManager = new ScriptRunnerManager(ns);
-        scriptRunnerManager.addHost("home", ns.getServerMaxRam("home") - reservedRam);
-        // When running multiple cores,
-        for (const server of hackAndGetAllAccessServers(ns)) {
-            scriptRunnerManager.addHost(server);
-        }
-        scriptRunnerManager.addScript("weaken.js", true, true);
-        scriptRunnerManager.addScript("grow.js", true, true);
-        scriptRunnerManager.addScript("hack.js", true, true);
 
         while (true) {
+            const scriptRunnerManager = new ScriptRunnerManager(ns);
+            scriptRunnerManager.addHost("home", ns.getServerMaxRam("home") - reservedRam);
+            for (const server of hackAndGetAllAccessServers(ns)) {
+                scriptRunnerManager.addHost(server);
+            }
+            scriptRunnerManager.addScript("weaken.js", true, true);
+            scriptRunnerManager.addScript("grow.js", true, true);
+            scriptRunnerManager.addScript("hack.js", true, true);
             const target = getMostLucrativeServer(ns);
-            // const target = "iron-gym";
+            // const target = "foodnstuff";
             await smartHack(ns, scriptRunnerManager, batchResetTimeMs, amountToHack, batchHostname, bufferTimeLimitMs, target);
         }
     }

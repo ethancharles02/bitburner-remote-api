@@ -7,9 +7,9 @@ import { ScriptRunnerManager } from "/scripts/scriptRunner.js";
 export async function main(ns: NS) {
     ns.disableLog("sleep");
     const batchResetTimeMs = 1000 * 60 * 60;
-    const amountToHack = 0.9;
-    const targetBufferTime = 250;
-    const bufferTimeLimitMs = 200;
+    const amountToHack = 0.99;
+    const targetBufferTime = 100;
+    const bufferTimeLimitMs = 50;
 
     const smartHackRam = ns.getScriptRam("/scripts/smartHack.js");
     const thisScriptRam = ns.getScriptRam("/scripts/smartHackBatcher.js");
@@ -45,14 +45,13 @@ export async function main(ns: NS) {
                     usedThreads = Math.min(threadsAvailable, requiredThreads);
                     if (usedThreads > 0) {
                         targetBatchManifest[target] = [["home"], [usedThreads * ramCost]];
-                    }
-
-                    threadsAvailableObj["home"] -= usedThreads;
-                    requiredThreads -= usedThreads;
-                    // We can't get much done with a limited number of threads
-                    if (threadsAvailableObj["home"] <= 1000) {
-                        isHomeAvailable = false;
-                        break;
+                        threadsAvailableObj["home"] -= usedThreads;
+                        requiredThreads -= usedThreads;
+                        // We can't get much done with a limited number of threads
+                        if (threadsAvailableObj["home"] <= 1000) {
+                            isHomeAvailable = false;
+                            break;
+                        }
                     }
                 } else {
                     for (const host of hosts) {
@@ -66,8 +65,8 @@ export async function main(ns: NS) {
                             } else {
                                 targetBatchManifest[target] = [[host], [allottedRam]];
                             }
+                            threadsAvailableObj[host] -= usedThreads;
                         }
-                        threadsAvailableObj[host] -= usedThreads;
                         if (threadsAvailableObj[host] == 0) {
                             delete threadsAvailableObj[host];
                             hostsToDelete.push(host);

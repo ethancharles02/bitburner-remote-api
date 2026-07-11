@@ -102,6 +102,9 @@ export class ScriptRunner {
             return 0;
         }
         const pid = this.ns.exec(scriptPath, this.hostname, { threads: numThreads }, ...scriptArgs);
+        if (pid == 0) {
+            throw Error("Failed to run script");
+        }
         this.runningScripts[pid] = this.scriptsRamCost[scriptPath] * numThreads;
         return pid;
     }
