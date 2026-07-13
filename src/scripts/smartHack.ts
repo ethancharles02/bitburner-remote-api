@@ -2,6 +2,15 @@ import { NS } from "@ns";
 
 import { getMostLucrativeServer, hackAndGetAllAccessServers } from "/scripts/helpers.js";
 import { ScriptRunnerManager } from "/scripts/scriptRunner.js";
+import { buyHacknetNodes } from "/scripts/hacknet";
+import { attemptUpgradeTarget } from "/scripts/hacknetHash";
+
+export function applyHashUpgrades(ns: NS, ...targets: string[]) {
+    buyHacknetNodes(ns);
+    for (const target of targets) {
+        attemptUpgradeTarget(ns, target);
+    }
+}
 
 /**
  * Grows a target to max with counteracting weakens interleaved
@@ -278,6 +287,8 @@ export async function main(ns: NS) {
         const batchHostname = "";
         // const batchHostname = "home";
         const bufferTimeLimitMs = 200;
+        // Only do this if you have hacknet servers
+        const doHashUpgrades = false;
 
         while (true) {
             const scriptRunnerManager = new ScriptRunnerManager(ns);
@@ -290,8 +301,12 @@ export async function main(ns: NS) {
             scriptRunnerManager.addScript("hack.js", true, true);
             const target = getMostLucrativeServer(ns);
             // const target = "foodnstuff";
+
+            if (doHashUpgrades) {
+                applyHashUpgrades(ns, target);
+            }
+
             await smartHack(ns, scriptRunnerManager, batchResetTimeMs, amountToHack, batchHostname, bufferTimeLimitMs, target);
         }
     }
-
 }

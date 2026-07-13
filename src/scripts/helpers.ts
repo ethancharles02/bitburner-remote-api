@@ -42,7 +42,7 @@ export function getAllServers(ns: NS, startTarget: string, parentTarget = ""): S
 export function hackAndGetAllAccessServers(ns: NS): Set<string> {
     const hackedServers: Set<string> = new Set();
     for (const server of getAllServers(ns, "home")) {
-        if (ns.getHackingLevel() >= ns.getServerRequiredHackingLevel(server)) {
+        if (!server.startsWith("hacknet") && ns.getHackingLevel() >= ns.getServerRequiredHackingLevel(server)) {
             if (openTarget(ns, server)) {
                 hackedServers.add(server);
             }

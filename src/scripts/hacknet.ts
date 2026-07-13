@@ -1,5 +1,7 @@
 import { NS } from "@ns";
 
+import { spendHacknetHashes, HashUpgrades } from "/scripts/hacknetHash";
+
 export function buyHacknetNodes(ns: NS) {
     // Buy all possible nodes first
     while (ns.hacknet.purchaseNode() != -1);
@@ -9,7 +11,8 @@ export function buyHacknetNodes(ns: NS) {
         ns.hacknet.upgradeLevel,
         ns.hacknet.upgradeCache,
         ns.hacknet.upgradeCore,
-        ns.hacknet.upgradeRam
+        ns.hacknet.upgradeRam,
+        ns.hacknet.upgradeCache
     ];
 
     const numNodes = ns.hacknet.numNodes();
@@ -27,5 +30,15 @@ export function buyHacknetNodes(ns: NS) {
 }
 
 export async function main(ns: NS) {
-    buyHacknetNodes(ns);
+    const doLoop = ns.args.length >= 1 ? Boolean(ns.args[0]) : false;
+    if (doLoop) {
+        while (true) {
+            spendHacknetHashes(ns, HashUpgrades.getMoney, undefined, -1);
+            buyHacknetNodes(ns);
+            // Wait 30 seconds
+            await ns.sleep(1000 * 30);
+        }
+    } else {
+        buyHacknetNodes(ns);
+    }
 }

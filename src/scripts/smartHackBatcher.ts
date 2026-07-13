@@ -1,15 +1,16 @@
 import { NS } from "@ns";
 
 import { getSortedLucrativeServers, hackAndGetAllAccessServers } from "/scripts/helpers.js";
-import { getRequiredThreadsForBatch } from "/scripts/smartHack.js";
+import { getRequiredThreadsForBatch, applyHashUpgrades } from "/scripts/smartHack.js";
 import { ScriptRunnerManager } from "/scripts/scriptRunner.js";
 
 export async function main(ns: NS) {
     ns.disableLog("sleep");
-    const batchResetTimeMs = 1000 * 60 * 60;
-    const amountToHack = 0.99;
-    const targetBufferTime = 100;
+    const batchResetTimeMs = 1000 * 60 * 30;
+    const amountToHack = 0.01;
+    const targetBufferTime = 200;
     const bufferTimeLimitMs = 50;
+    const doHashUpgrades = true;
 
     const smartHackRam = ns.getScriptRam("/scripts/smartHack.js");
     const thisScriptRam = ns.getScriptRam("/scripts/smartHackBatcher.js");
@@ -86,6 +87,10 @@ export async function main(ns: NS) {
                     break;
                 }
             }
+        }
+
+        if (doHashUpgrades) {
+            applyHashUpgrades(ns, ...Object.keys(targetBatchManifest));
         }
 
         const ids = [];
