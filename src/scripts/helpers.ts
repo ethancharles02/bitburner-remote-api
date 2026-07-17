@@ -39,10 +39,14 @@ export function getAllServers(ns: NS, startTarget: string, parentTarget = ""): S
 /**
  * Gets a list of all servers (after attempting to hack them) with root access
  * */
-export function hackAndGetAllAccessServers(ns: NS): Set<string> {
+export function hackAndGetAllAccessServers(ns: NS, includeHacknetServers = true): Set<string> {
     const hackedServers: Set<string> = new Set();
     for (const server of getAllServers(ns, "home")) {
-        if (!server.startsWith("hacknet") && ns.getHackingLevel() >= ns.getServerRequiredHackingLevel(server)) {
+        if (server.startsWith("hacknet")) {
+            if (includeHacknetServers) {
+                hackedServers.add(server);
+            }
+        } else if (ns.getHackingLevel() >= ns.getServerRequiredHackingLevel(server)) {
             if (openTarget(ns, server)) {
                 hackedServers.add(server);
             }

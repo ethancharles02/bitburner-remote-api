@@ -3,13 +3,17 @@ import { NS } from "@ns";
 import { getMostLucrativeServer, hackAndGetAllAccessServers } from "/scripts/helpers.js";
 import { ScriptRunnerManager } from "/scripts/scriptRunner.js";
 import { buyHacknetNodes } from "/scripts/hacknet";
-import { attemptUpgradeTarget } from "/scripts/hacknetHash";
+import { attemptUpgradeTarget, spendHacknetHashes, HashUpgrades } from "/scripts/hacknetHash";
 
-export function applyHashUpgrades(ns: NS, ...targets: string[]) {
+export function applyHashUpgrades(ns: NS, doUpgradeTargets: boolean, ...targets: string[]) {
     buyHacknetNodes(ns);
-    for (const target of targets) {
-        attemptUpgradeTarget(ns, target);
+    if (doUpgradeTargets) {
+        for (const target of targets) {
+            attemptUpgradeTarget(ns, target);
+        }
     }
+    // If there are any hashes left, turn them into money for future hacknet upgrades
+    spendHacknetHashes(ns, HashUpgrades.getMoney, undefined, -1);
 }
 
 /**
@@ -88,7 +92,6 @@ type BatchStats = {
 }
 
 export function getThreadStats(ns: NS, target: string, amountToHack: number, numCores: number) {
-
     const player = ns.getPlayer();
     const optimalServer = ns.getServer(target);
     const optimalLowMoneyServer = ns.getServer(target);
@@ -257,8 +260,6 @@ export async function main(ns: NS) {
         const numRequiredArgs = 5;
         const batchResetTimeMs = Number(ns.args[0]);
         const amountToHack = Number(ns.args[1]);
-        // Since our calculations include our cores (more than 1), we can only use home, otherwise, we could use ""
-        // const batchHostname = "";
         const batchHostname = String(ns.args[2]);
         const bufferTimeLimitMs = Number(ns.args[3]);
         const target = String(ns.args[4]);
@@ -276,34 +277,35 @@ export async function main(ns: NS) {
         scriptRunnerManager.addScript("grow.js", true, true);
         scriptRunnerManager.addScript("hack.js", true, true);
 
-        // const target = "iron-gym";
         await smartHack(ns, scriptRunnerManager, batchResetTimeMs, amountToHack, batchHostname, bufferTimeLimitMs, target);
     } else {
-        // Make sure there is enough Ram for this script to run at least
-        const reservedRam = ns.getScriptRam("/scripts/smartHack.js") + 4;
-        const batchResetTimeMs = 1000 * 60 * 30;
-        const amountToHack = 0.01;
+        // Make sure there is enough Ram for this script
+        const reservedRam = ns.getScriptRam("/scripts/smartHack.js") + 16;
+        const batchResetTimeMs = 1000 * 60 * 10;
+        const amountToHack = 0.1;
         // Since our calculations include our cores (more than 1), we can only use home, otherwise, we could use ""
         const batchHostname = "";
         // const batchHostname = "home";
         const bufferTimeLimitMs = 200;
         // Only do this if you have hacknet servers
         const doHashUpgrades = false;
+        const includeHacknetServers = false;
 
         while (true) {
             const scriptRunnerManager = new ScriptRunnerManager(ns);
+
             scriptRunnerManager.addHost("home", ns.getServerMaxRam("home") - reservedRam);
-            for (const server of hackAndGetAllAccessServers(ns)) {
+            for (const server of hackAndGetAllAccessServers(ns, includeHacknetServers)) {
                 scriptRunnerManager.addHost(server);
             }
             scriptRunnerManager.addScript("weaken.js", true, true);
             scriptRunnerManager.addScript("grow.js", true, true);
             scriptRunnerManager.addScript("hack.js", true, true);
-            const target = getMostLucrativeServer(ns);
-            // const target = "foodnstuff";
+            // const target = getMostLucrativeServer(ns);
+            const target = "phantasy";
 
             if (doHashUpgrades) {
-                applyHashUpgrades(ns, target);
+                applyHashUpgrades(ns, true, target);
             }
 
             await smartHack(ns, scriptRunnerManager, batchResetTimeMs, amountToHack, batchHostname, bufferTimeLimitMs, target);

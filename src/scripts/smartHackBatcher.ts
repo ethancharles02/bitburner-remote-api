@@ -90,7 +90,7 @@ export async function main(ns: NS) {
         }
 
         if (doHashUpgrades) {
-            applyHashUpgrades(ns, ...Object.keys(targetBatchManifest));
+            applyHashUpgrades(ns, true, ...Object.keys(targetBatchManifest));
         }
 
         const ids = [];
