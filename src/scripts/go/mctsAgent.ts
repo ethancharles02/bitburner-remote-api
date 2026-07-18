@@ -72,13 +72,12 @@ class MCTSNode {
 
     simulate(maxSimulationDepth: number): void {
         let result: number;
-        if (this.board.isWinningState(this.playerNum)) {
-            result = -1;
-        } else if (
+        const scores = this.board.getScores();
+        if (this.board.isWinningState(this.playerNum) ||
             this.terminal &&
-            this.board.capturedPieceCounts[this.otherPlayerNum - 1] > this.board.capturedPieceCounts[this.playerNum - 1]
+            scores[this.otherPlayerNum - 1] > scores[this.playerNum - 1]
         ) {
-            result = 1;
+            result = scores[this.otherPlayerNum - 1] - scores[this.playerNum - 1];
         } else {
             let validMoves = new Set(this.moves);
             const newBoard = this.board.copy();
@@ -98,9 +97,8 @@ class MCTSNode {
                 validMoves = newBoard.getAvailableMoves(players[i % 2]);
             }
 
-            const playerPieceCount = newBoard.capturedPieceCounts[this.playerNum - 1];
-            const otherPlayerPieceCount = newBoard.capturedPieceCounts[this.otherPlayerNum - 1];
-            result = otherPlayerPieceCount - playerPieceCount;
+            const newScores = newBoard.getScores();
+            result = newScores[this.otherPlayerNum - 1] - newScores[this.playerNum - 1];
         }
 
         this.numWins += result;

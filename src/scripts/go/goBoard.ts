@@ -60,19 +60,32 @@ export class GoBoard {
         return availableMoves;
     }
 
+    getScores(): number[] {
+        const scores = [0, 0];
+        for (const group of this.groups) {
+            if (group.playerNum > 0) {
+                scores[group.playerNum - 1] += group.piecePositions.size + group.openPositions.size;
+            }
+        }
+
+        return scores
+    }
+
     isWinningState(playerNum: number): boolean {
+        const scores = this.getScores();
         const other = this.otherPlayer(playerNum);
         return (
             this.getAvailableMoves(other).size === 0 &&
-            this.capturedPieceCounts[playerNum - 1] > this.capturedPieceCounts[other - 1]
+            scores[playerNum - 1] > scores[other - 1]
         );
     }
 
     isTie(): boolean {
+        const scores = this.getScores();
         return (
             this.getAvailableMoves(1).size === 0 &&
             this.getAvailableMoves(2).size === 0 &&
-            this.capturedPieceCounts[0] === this.capturedPieceCounts[1]
+            scores[0] === scores[1]
         );
     }
 

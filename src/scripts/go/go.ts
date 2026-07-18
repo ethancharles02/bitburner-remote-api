@@ -23,11 +23,11 @@ export enum GameResult {
 
 export async function main(ns: NS) {
     while (true) {
-        ns.go.resetBoardState(GoOpponent.daedalus, 7);
+        ns.go.resetBoardState(GoOpponent.netBurners, 7);
         const boardState = ns.go.getBoardState()
         const goBoard = new GoBoard(createEmptyBoard(7, 7));
         const maxIterations = 2000;
-        const maxSimulationDepth = 50;
+        const maxSimulationDepth = 20;
         const mctsAgent = new MCTSAgent(1, maxIterations, maxSimulationDepth);
 
         for (let x = 0; x < 7; x++) {

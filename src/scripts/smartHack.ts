@@ -288,7 +288,7 @@ export async function main(ns: NS) {
         // const batchHostname = "home";
         const bufferTimeLimitMs = 200;
         // Only do this if you have hacknet servers
-        const doHashUpgrades = false;
+        const doHashUpgrades = true;
         const includeHacknetServers = false;
 
         while (true) {
