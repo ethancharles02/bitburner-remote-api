@@ -6,26 +6,33 @@ import { ScriptRunnerManager } from "/scripts/scriptRunner.js";
 
 export async function main(ns: NS) {
     ns.disableLog("sleep");
-    const batchResetTimeMs = 1000 * 60 * 30;
-    const amountToHack = 0.01;
-    const targetBufferTime = 200;
+    const batchResetTimeMs = 1000 * 60 * 10;
+    const amountToHack = 0.9;
+    const targetBufferTime = 100;
     const bufferTimeLimitMs = 50;
+    const maxTargets = 3;
     const doHashUpgrades = true;
+    const includeHacknetServers = false;
+    const spendLeftoverHashes = false;
+    // Ram for use by other applications
+    const additionalAllottedRam = 32
 
     const smartHackRam = ns.getScriptRam("/scripts/smartHack.js");
     const thisScriptRam = ns.getScriptRam("/scripts/smartHackBatcher.js");
 
-    // We don't know how many threads we are going to spawn off so this allows for a buffer
-    const reservedRam = 1024;
-    const smartHackLimit = Math.floor((reservedRam - thisScriptRam) / smartHackRam);
+    // Ram for use of smartHack scripts
+    const reservedRam = (smartHackRam * maxTargets) + thisScriptRam;
     while (true) {
         const targets = getSortedLucrativeServers(ns);
-        const hosts = [...hackAndGetAllAccessServers(ns)];
+        const hosts = ["home", ...hackAndGetAllAccessServers(ns, includeHacknetServers)];
 
         const runner = new ScriptRunnerManager(ns);
-        runner.addHost("home", ns.getServerMaxRam("home") - reservedRam);
         for (const host of hosts) {
-            runner.addHost(host);
+            if (host == "home") {
+                runner.addHost(host, ns.getServerMaxRam(host) - (reservedRam + additionalAllottedRam));
+            } else {
+                runner.addHost(host);
+            }
         }
         runner.addScript("weaken.js", true, true, "");
 
@@ -34,73 +41,62 @@ export async function main(ns: NS) {
         // For each target key, an array of hosts and allotted ram amounts follows
         const targetBatchManifest: Record<string, [Array<string>, Array<number>]> = {};
 
-        let isHomeAvailable = true;
-        const numCores = ns.getServer("home").cpuCores;
         let hostsToDelete = [];
         for (const target of targets) {
-            let requiredThreads = Math.floor(getRequiredThreadsForBatch(ns, target, amountToHack, isHomeAvailable ? numCores : 1, targetBufferTime));
-            while (requiredThreads > 0 && hosts.length > 0 && Object.keys(targetBatchManifest).length < smartHackLimit) {
+            // TODO convert all printf calls to be template literals (ie. `print ${testVar}`)
+            // TODO currently calculating with 1 assumed core. A major refactor of the script runner
+            // could be done to instead allot ram on a server basis and use their cores (ie. we
+            // specify how much we need to weaken/grow and the scriptrunner decides which servers to
+            // assign the task). The easiest way I imagine this could be done is that when adding
+            // scripts to the script runner, you could also include a weight with that script. You
+            // then ask to run scripts with a particular weight allotment
+            let requiredThreads = Math.floor(getRequiredThreadsForBatch(ns, target, amountToHack, 1, targetBufferTime));
+            while (requiredThreads > 0 && hosts.length > 0 && Object.keys(targetBatchManifest).length < maxTargets) {
                 let usedThreads = 0;
-                if (isHomeAvailable) {
-                    const threadsAvailable = threadsAvailableObj["home"];
+                for (const host of hosts) {
+                    const threadsAvailable = threadsAvailableObj[host];
                     usedThreads = Math.min(threadsAvailable, requiredThreads);
                     if (usedThreads > 0) {
-                        targetBatchManifest[target] = [["home"], [usedThreads * ramCost]];
-                        threadsAvailableObj["home"] -= usedThreads;
-                        requiredThreads -= usedThreads;
-                        // We can't get much done with a limited number of threads
-                        if (threadsAvailableObj["home"] <= 1000) {
-                            isHomeAvailable = false;
-                            break;
+                        const allottedRam = usedThreads * ramCost;
+                        if (target in targetBatchManifest) {
+                            targetBatchManifest[target][0].push(host);
+                            targetBatchManifest[target][1].push(allottedRam);
+                        } else {
+                            targetBatchManifest[target] = [[host], [allottedRam]];
                         }
+                        threadsAvailableObj[host] -= usedThreads;
                     }
-                } else {
-                    for (const host of hosts) {
-                        const threadsAvailable = threadsAvailableObj[host];
-                        usedThreads = Math.min(threadsAvailable, requiredThreads);
-                        if (usedThreads > 0) {
-                            const allottedRam = usedThreads * ramCost;
-                            if (target in targetBatchManifest) {
-                                targetBatchManifest[target][0].push(host);
-                                targetBatchManifest[target][1].push(allottedRam);
-                            } else {
-                                targetBatchManifest[target] = [[host], [allottedRam]];
-                            }
-                            threadsAvailableObj[host] -= usedThreads;
-                        }
-                        if (threadsAvailableObj[host] == 0) {
-                            delete threadsAvailableObj[host];
-                            hostsToDelete.push(host);
-                        }
-                        requiredThreads -= usedThreads;
-                        if (requiredThreads == 0) {
-                            break;
-                        }
+                    if (threadsAvailableObj[host] == 0) {
+                        delete threadsAvailableObj[host];
+                        hostsToDelete.push(host);
                     }
+                    requiredThreads -= usedThreads;
+                    if (requiredThreads == 0) {
+                        break;
+                    }
+                }
 
-                    for (const host of hostsToDelete) {
-                        hosts.splice(hosts.indexOf(host), 1);
-                    }
-                    hostsToDelete = [];
+                for (const host of hostsToDelete) {
+                    hosts.splice(hosts.indexOf(host), 1);
                 }
-                if (hosts.length == 0) {
-                    break;
-                }
+                hostsToDelete = [];
+            }
+            if (hosts.length == 0) {
+                break;
             }
         }
 
         if (doHashUpgrades) {
-            applyHashUpgrades(ns, true, ...Object.keys(targetBatchManifest));
+            applyHashUpgrades(ns, true, spendLeftoverHashes, ...Object.keys(targetBatchManifest));
         }
 
         const ids = [];
         for (const [target, hostsAndRam] of Object.entries(targetBatchManifest)) {
-            const batchHostname = hostsAndRam[0][0] == "home" ? "home" : "";
-            ids.push(ns.run("/scripts/smartHack.js", 1, batchResetTimeMs, amountToHack, batchHostname, bufferTimeLimitMs, target, ...hostsAndRam[0], ...hostsAndRam[1]));
+            ids.push(ns.run("/scripts/smartHack.js", 1, batchResetTimeMs, amountToHack, "", bufferTimeLimitMs, target, ...hostsAndRam[0], ...hostsAndRam[1]));
         }
 
-        if (Object.keys(targetBatchManifest).length == smartHackLimit) {
-            ns.tprint("WARNING: Hit the limit of reserved ram for batching, consider increasing reservedRam");
+        if (Object.keys(targetBatchManifest).length >= maxTargets) {
+            ns.tprint("WARNING: Max targets reached for smarthacking, consider increasing hack amount");
         }
 
         while (ids.some(id => ns.isRunning(id))) {

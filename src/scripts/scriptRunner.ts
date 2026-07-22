@@ -134,6 +134,9 @@ export class ScriptRunnerManager {
         if (!this.ns.serverExists(hostname)) {
             this.ns.printf("Couldn't find server with name: %s", hostname);
         }
+        if (allottedRam !== undefined && allottedRam <= 0) {
+            throw Error(`Can't reserve ${allottedRam} to server: ${hostname}`);
+        }
 
         this.hosts[hostname] = new ScriptRunner(this.ns, hostname, allottedRam);
     }

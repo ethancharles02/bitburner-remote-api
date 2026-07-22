@@ -23,23 +23,34 @@ export function autocomplete(data: AutocompleteData, args: string[]) {
     return Object.keys(HashUpgrades);
 }
 
-export function spendHacknetHashes(ns: NS, upgrade: HashUpgrades, target: string | undefined = undefined, count: number | undefined = undefined) {
+export function spendHacknetHashes(ns: NS, upgrade: HashUpgrades, target: string | undefined = undefined, count: number | undefined = undefined): boolean {
     if (count == -1) {
-        while (ns.hacknet.spendHashes(upgrade, target));
+        // Will always return false by nature of how this is written. I'm not gonna worry about it
+        let upgradeSuccessful = ns.hacknet.spendHashes(upgrade, target);
+        while (upgradeSuccessful) {
+            upgradeSuccessful = ns.hacknet.spendHashes(upgrade, target);
+        }
+        return upgradeSuccessful;
     } else {
-        ns.hacknet.spendHashes(upgrade, target, count);
+        return ns.hacknet.spendHashes(upgrade, target, count);
     }
 }
 
 // Prioritizes maximizing money first and then decreasing security
 export function attemptUpgradeTarget(ns: NS, target: string) {
-    // Less than 10 trillion, it can still be increased
-    if (ns.getServerMaxMoney(target) < 10_000_000_000_000) {
-        spendHacknetHashes(ns, HashUpgrades.increaseMaxMoney, target, -1);
-    }
-    // More than 1, it can still be decreased
-    if (ns.getServerMinSecurityLevel(target) > 1) {
-        spendHacknetHashes(ns, HashUpgrades.reduceMinSecurity, target, -1);
+    let upgradeSuccessful = true;
+    while (upgradeSuccessful) {
+        upgradeSuccessful = false;
+        // Less than 10 trillion, it can still be increased
+        if (ns.getServerMaxMoney(target) < 10_000_000_000_000) {
+            const result = spendHacknetHashes(ns, HashUpgrades.increaseMaxMoney, target, 1);
+            upgradeSuccessful ||= result;
+        }
+        // More than 1, it can still be decreased
+        if (ns.getServerMinSecurityLevel(target) > 1) {
+            const result = spendHacknetHashes(ns, HashUpgrades.reduceMinSecurity, target, 1);
+            upgradeSuccessful ||= result;
+        }
     }
 }
 

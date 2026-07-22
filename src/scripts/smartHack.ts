@@ -5,15 +5,18 @@ import { ScriptRunnerManager } from "/scripts/scriptRunner.js";
 import { buyHacknetNodes } from "/scripts/hacknet";
 import { attemptUpgradeTarget, spendHacknetHashes, HashUpgrades } from "/scripts/hacknetHash";
 
-export function applyHashUpgrades(ns: NS, doUpgradeTargets: boolean, ...targets: string[]) {
+export function applyHashUpgrades(ns: NS, doUpgradeTargets: boolean, spendLeftoverHashes: boolean, ...targets: string[]) {
     buyHacknetNodes(ns);
     if (doUpgradeTargets) {
         for (const target of targets) {
             attemptUpgradeTarget(ns, target);
         }
     }
-    // If there are any hashes left, turn them into money for future hacknet upgrades
-    spendHacknetHashes(ns, HashUpgrades.getMoney, undefined, -1);
+
+    if (spendLeftoverHashes) {
+        // If there are any hashes left, turn them into money for future hacknet upgrades
+        spendHacknetHashes(ns, HashUpgrades.getMoney, undefined, -1);
+    }
 }
 
 /**
@@ -282,14 +285,14 @@ export async function main(ns: NS) {
         // Make sure there is enough Ram for this script
         const reservedRam = ns.getScriptRam("/scripts/smartHack.js") + 16;
         const batchResetTimeMs = 1000 * 60 * 10;
-        const amountToHack = 0.1;
+        const amountToHack = 0.99;
         // Since our calculations include our cores (more than 1), we can only use home, otherwise, we could use ""
         const batchHostname = "";
         // const batchHostname = "home";
         const bufferTimeLimitMs = 200;
         // Only do this if you have hacknet servers
         const doHashUpgrades = true;
-        const includeHacknetServers = false;
+        const includeHacknetServers = true;
 
         while (true) {
             const scriptRunnerManager = new ScriptRunnerManager(ns);
@@ -305,7 +308,7 @@ export async function main(ns: NS) {
             const target = "phantasy";
 
             if (doHashUpgrades) {
-                applyHashUpgrades(ns, true, target);
+                applyHashUpgrades(ns, true, true, target);
             }
 
             await smartHack(ns, scriptRunnerManager, batchResetTimeMs, amountToHack, batchHostname, bufferTimeLimitMs, target);
