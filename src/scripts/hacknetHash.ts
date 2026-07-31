@@ -54,10 +54,15 @@ export function attemptUpgradeTarget(ns: NS, target: string) {
     }
 }
 
+function isHashUpgrade(value: string): value is HashUpgrades {
+    return Object.values(HashUpgrades).includes(value as HashUpgrades);
+}
+
 export async function main(ns: NS) {
     let upgrade = HashUpgrades.getMoney;
-    if (String(ns.args[0]) in HashUpgrades) {
-        upgrade = HashUpgrades[ns.args[0] as keyof typeof HashUpgrades];
+    const upgradeArg = String(ns.args[0]);
+    if (isHashUpgrade(upgradeArg)) {
+        upgrade = upgradeArg;
     }
     const target = ns.args.length >= 2 && String(ns.args[1]) != "" ? String(ns.args[1]) : undefined;
     const count = ns.args.length >= 3 ? Number(ns.args[2]) : undefined;

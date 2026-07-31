@@ -4,9 +4,13 @@ import { getMostLucrativeServer, hackAndGetAllAccessServers } from "/scripts/hel
 import { ScriptRunnerManager } from "/scripts/scriptRunner.js";
 import { buyHacknetNodes } from "/scripts/hacknet";
 import { attemptUpgradeTarget, spendHacknetHashes, HashUpgrades } from "/scripts/hacknetHash";
+import { buyCloudServers } from "/scripts/cloudServers";
 
-export function applyHashUpgrades(ns: NS, doUpgradeTargets: boolean, spendLeftoverHashes: boolean, ...targets: string[]) {
-    buyHacknetNodes(ns);
+export function applyHashUpgrades(ns: NS, doUpgradeHacknetNodes: boolean, doUpgradeTargets: boolean, spendLeftoverHashes: boolean, ...targets: string[]) {
+    if (doUpgradeHacknetNodes) {
+        buyHacknetNodes(ns);
+    }
+
     if (doUpgradeTargets) {
         for (const target of targets) {
             attemptUpgradeTarget(ns, target);
@@ -169,6 +173,21 @@ export function getBatchStats(ns: NS, target: string, amountToHack: number, numC
     return batchStats;
 }
 
+function isHackingLevelPastThreshold(ns: NS, oldLevel: number, thresh: number) {
+    return ns.getHackingLevel() >= oldLevel * thresh;
+}
+
+export async function torBuy(ns: NS) {
+    const pid = ns.exec("/scripts/torBuy.js", "home");
+    if (pid != 0) {
+        while (ns.isRunning(pid)) {
+            await ns.sleep(50);
+        }
+    } else {
+        throw Error("Failed to run torBuy for some reason");
+    }
+}
+
 export async function smartHack(
         ns: NS,
         scriptRunnerManager: ScriptRunnerManager,
@@ -176,7 +195,8 @@ export async function smartHack(
         amountToHack: number,
         batchHostname: string,
         bufferTimeLimitMs: number,
-        target: string) {
+        target: string,
+        hackingLevelThreshold: number) {
     let numCores = 1;
     if (batchHostname != "") {
         numCores = ns.getServer(batchHostname).cpuCores;
@@ -200,6 +220,8 @@ export async function smartHack(
     const oldTime = performance.now();
     let batchSetCount = 0;
     while (performance.now() - oldTime < batchResetTimeMs) {
+        const level = ns.getHackingLevel();
+
         ns.tprintf("\n%s Batch Set: %d", target, batchSetCount);
         const batchStats = getBatchStats(ns, target, amountToHack, numCores, estimatedNumAvailableThreads);
 
@@ -216,7 +238,7 @@ export async function smartHack(
         let bufferTimeMs = batchStats.bufferTimeMs;
         // Prevent buffer time from getting too low
         if (bufferTimeMs < bufferTimeLimitMs) {
-            ns.tprintf("WARNING: Buffer time could go less than %d ms. You can probably hack a more lucrative server", bufferTimeLimitMs)
+            ns.tprintf("WARNING: Buffer time could go less than %d ms. It is recommended that you increase the hack amount", bufferTimeLimitMs)
             bufferTimeMs = bufferTimeLimitMs;
         }
 
@@ -240,7 +262,11 @@ export async function smartHack(
         let isSafe = false;
         while (firstProcessIds.some(id => ns.isRunning(id))) {
             isSafe = true;
-            await ns.sleep(50);
+            await ns.sleep(100);
+        }
+
+        if (isHackingLevelPastThreshold(ns, level, hackingLevelThreshold)) {
+            break;
         }
 
         if (!isSafe) {
@@ -252,7 +278,7 @@ export async function smartHack(
     }
     // Wait till the last process is done
     while (lastProcessIds.some(id => ns.isRunning(id))) {
-        await ns.sleep(50);
+        await ns.sleep(100);
     }
 }
 
@@ -280,21 +306,43 @@ export async function main(ns: NS) {
         scriptRunnerManager.addScript("grow.js", true, true);
         scriptRunnerManager.addScript("hack.js", true, true);
 
-        await smartHack(ns, scriptRunnerManager, batchResetTimeMs, amountToHack, batchHostname, bufferTimeLimitMs, target);
+        await smartHack(ns, scriptRunnerManager, batchResetTimeMs, amountToHack, batchHostname, bufferTimeLimitMs, target, 1.1);
     } else {
         // Make sure there is enough Ram for this script
-        const reservedRam = ns.getScriptRam("/scripts/smartHack.js") + 16;
+        const reservedRam = ns.getScriptRam("/scripts/smartHack.js") + 8;
         const batchResetTimeMs = 1000 * 60 * 10;
-        const amountToHack = 0.99;
+        const amountToHack = 0.01;
         // Since our calculations include our cores (more than 1), we can only use home, otherwise, we could use ""
         const batchHostname = "";
         // const batchHostname = "home";
         const bufferTimeLimitMs = 200;
         // Only do this if you have hacknet servers
         const doHashUpgrades = true;
+        const doUpgradeHacknetNodes = false;
+        const doUpgradeTargets = true;
+        const spendLeftoverHashes = false;
         const includeHacknetServers = true;
+        const upgradeCloudServers = true;
+
+        const doTorBuy = true;
 
         while (true) {
+            const target = getMostLucrativeServer(ns);
+            // const target = "foodnstuff";
+            // const target = "phantasy";
+
+            if (doTorBuy) {
+                await torBuy(ns);
+            }
+
+            if (upgradeCloudServers) {
+                buyCloudServers(ns, false);
+            }
+
+            if (doHashUpgrades) {
+                applyHashUpgrades(ns, doUpgradeHacknetNodes, doUpgradeTargets, spendLeftoverHashes, target);
+            }
+
             const scriptRunnerManager = new ScriptRunnerManager(ns);
 
             scriptRunnerManager.addHost("home", ns.getServerMaxRam("home") - reservedRam);
@@ -304,14 +352,8 @@ export async function main(ns: NS) {
             scriptRunnerManager.addScript("weaken.js", true, true);
             scriptRunnerManager.addScript("grow.js", true, true);
             scriptRunnerManager.addScript("hack.js", true, true);
-            // const target = getMostLucrativeServer(ns);
-            const target = "phantasy";
 
-            if (doHashUpgrades) {
-                applyHashUpgrades(ns, true, true, target);
-            }
-
-            await smartHack(ns, scriptRunnerManager, batchResetTimeMs, amountToHack, batchHostname, bufferTimeLimitMs, target);
+            await smartHack(ns, scriptRunnerManager, batchResetTimeMs, amountToHack, batchHostname, bufferTimeLimitMs, target, 1.1);
         }
     }
 }

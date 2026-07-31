@@ -1,19 +1,27 @@
 import { NS } from "@ns";
 
 import { getSortedLucrativeServers, hackAndGetAllAccessServers } from "/scripts/helpers.js";
-import { getRequiredThreadsForBatch, applyHashUpgrades } from "/scripts/smartHack.js";
+import { getRequiredThreadsForBatch, applyHashUpgrades, torBuy } from "/scripts/smartHack.js";
 import { ScriptRunnerManager } from "/scripts/scriptRunner.js";
+import { buyCloudServers } from "/scripts/cloudServers";
 
 export async function main(ns: NS) {
     ns.disableLog("sleep");
     const batchResetTimeMs = 1000 * 60 * 10;
-    const amountToHack = 0.9;
+    // TODO this could be adjusted such that it uses a binary search to check values (with a
+    // granularity of 0.01) and find the maximum for the amount of targets?
+    const amountToHack = 0.99;
     const targetBufferTime = 100;
     const bufferTimeLimitMs = 50;
-    const maxTargets = 3;
+    const maxTargets = 10;
+
     const doHashUpgrades = true;
+    const doUpgradeHacknetNodes = true;
     const includeHacknetServers = false;
     const spendLeftoverHashes = false;
+    const upgradeCloudServers = true;
+
+    const doTorBuy = true;
     // Ram for use by other applications
     const additionalAllottedRam = 32
 
@@ -23,6 +31,14 @@ export async function main(ns: NS) {
     // Ram for use of smartHack scripts
     const reservedRam = (smartHackRam * maxTargets) + thisScriptRam;
     while (true) {
+        if (doTorBuy) {
+            await torBuy(ns);
+        }
+
+        if (upgradeCloudServers) {
+            buyCloudServers(ns, false);
+        }
+
         const targets = getSortedLucrativeServers(ns);
         const hosts = ["home", ...hackAndGetAllAccessServers(ns, includeHacknetServers)];
 
@@ -87,12 +103,12 @@ export async function main(ns: NS) {
         }
 
         if (doHashUpgrades) {
-            applyHashUpgrades(ns, true, spendLeftoverHashes, ...Object.keys(targetBatchManifest));
+            applyHashUpgrades(ns, doUpgradeHacknetNodes, true, spendLeftoverHashes, ...Object.keys(targetBatchManifest));
         }
 
         const ids = [];
         for (const [target, hostsAndRam] of Object.entries(targetBatchManifest)) {
-            ids.push(ns.run("/scripts/smartHack.js", 1, batchResetTimeMs, amountToHack, "", bufferTimeLimitMs, target, ...hostsAndRam[0], ...hostsAndRam[1]));
+            ids.push(ns.exec("/scripts/smartHack.js", "home", 1, batchResetTimeMs, amountToHack, "", bufferTimeLimitMs, target, ...hostsAndRam[0], ...hostsAndRam[1]));
         }
 
         if (Object.keys(targetBatchManifest).length >= maxTargets) {
