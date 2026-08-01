@@ -234,7 +234,7 @@ export class ScriptRunnerManager {
                     numThreads -= usedThreads;
                 }
 
-                this.ns.printf("Script path: %s, num threads: %d, script cost: %f, available ram: %f", scriptPath, usedThreads, scriptRunner.scriptsRamCost[scriptPath], scriptRunner.availableRam);
+                this.ns.print(`Script path: ${scriptPath}, num threads: ${usedThreads}, script cost: ${scriptRunner.scriptsRamCost[scriptPath]}, available ram: ${scriptRunner.availableRam}`);
                 runningIds.push(scriptRunner.runScript(scriptPath, usedThreads, ...scriptArgs));
                 isScriptRun = true;
 
@@ -250,8 +250,7 @@ export class ScriptRunnerManager {
         }
 
         if (!isScriptRun) {
-            this.ns.printf("Unable to find host to run: %s with num threads: %d", scriptPath, numThreads);
-            throw Error("Couldn't find a host to run the script. See log.");
+            throw Error(`Couldn't find a host to run: ${scriptPath} with num threads ${numThreads}`);
         }
 
         if (!awaitFinish) {

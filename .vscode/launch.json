@@ -14,7 +14,9 @@
         "<node_internals>/**"
       ],
       "sourceMapPathOverrides": {
+        "../src/*": "${workspaceFolder}/src/*",
         "../../src/*": "${workspaceFolder}/src/*",
+        "../../../src/*": "${workspaceFolder}/src/*"
       }
     }
   ]

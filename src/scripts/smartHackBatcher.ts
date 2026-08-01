@@ -1,7 +1,7 @@
 import { NS } from "@ns";
 
-import { getSortedLucrativeServers, hackAndGetAllAccessServers } from "/scripts/helpers.js";
-import { getRequiredThreadsForBatch, applyHashUpgrades, torBuy } from "/scripts/smartHack.js";
+import { getSortedLucrativeServers, hackAndGetAllAccessServers, runScript } from "/scripts/helpers.js";
+import { getRequiredThreadsForBatch, applyHashUpgrades } from "/scripts/smartHack.js";
 import { ScriptRunnerManager } from "/scripts/scriptRunner.js";
 import { buyCloudServers } from "/scripts/cloudServers";
 
@@ -10,10 +10,10 @@ export async function main(ns: NS) {
     const batchResetTimeMs = 1000 * 60 * 10;
     // TODO this could be adjusted such that it uses a binary search to check values (with a
     // granularity of 0.01) and find the maximum for the amount of targets?
-    const amountToHack = 0.99;
+    const amountToHack = 0.9;
     const targetBufferTime = 100;
     const bufferTimeLimitMs = 50;
-    const maxTargets = 10;
+    const maxTargets = 3;
 
     const doHashUpgrades = true;
     const doUpgradeHacknetNodes = true;
@@ -22,17 +22,22 @@ export async function main(ns: NS) {
     const upgradeCloudServers = true;
 
     const doTorBuy = true;
+    const doComputerUpgrade = true;
     // Ram for use by other applications
-    const additionalAllottedRam = 32
+    const additionalAllottedRam = 64
 
     const smartHackRam = ns.getScriptRam("/scripts/smartHack.js");
     const thisScriptRam = ns.getScriptRam("/scripts/smartHackBatcher.js");
 
     // Ram for use of smartHack scripts
-    const reservedRam = (smartHackRam * maxTargets) + thisScriptRam;
+    const reservedRam = (smartHackRam * maxTargets) + thisScriptRam + additionalAllottedRam;
     while (true) {
+        if (doComputerUpgrade) {
+            await runScript(ns, "/scripts/upgradeComputer.js", "home", true);
+        }
+
         if (doTorBuy) {
-            await torBuy(ns);
+            await runScript(ns, "/scripts/torBuy.js", "home", true);
         }
 
         if (upgradeCloudServers) {
@@ -45,7 +50,7 @@ export async function main(ns: NS) {
         const runner = new ScriptRunnerManager(ns);
         for (const host of hosts) {
             if (host == "home") {
-                runner.addHost(host, ns.getServerMaxRam(host) - (reservedRam + additionalAllottedRam));
+                runner.addHost(host, ns.getServerMaxRam(host) - reservedRam);
             } else {
                 runner.addHost(host);
             }

@@ -39,11 +39,15 @@ export function getAllServers(ns: NS, startTarget: string, parentTarget = ""): S
 /**
  * Gets a list of all servers (after attempting to hack them) with root access
  * */
-export function hackAndGetAllAccessServers(ns: NS, includeHacknetServers = true): Set<string> {
+export function hackAndGetAllAccessServers(ns: NS, includeHacknetServers = true, includeCloudServers = true): Set<string> {
     const hackedServers: Set<string> = new Set();
     for (const server of getAllServers(ns, "home")) {
         if (server.startsWith("hacknet")) {
             if (includeHacknetServers) {
+                hackedServers.add(server);
+            }
+        } else if (server.startsWith("cloud")) {
+            if (includeCloudServers) {
                 hackedServers.add(server);
             }
         } else if (ns.getHackingLevel() >= ns.getServerRequiredHackingLevel(server)) {
@@ -118,6 +122,17 @@ export function getSortedLucrativeServers(ns: NS) {
 
 export function getMostLucrativeServer(ns: NS) {
     return getSortedLucrativeServers(ns)[0];
+}
+
+export async function runScript(ns: NS, script: string, host: string, waitForFinish: boolean) {
+    const pid = ns.exec(script, host);
+    if (pid != 0 && waitForFinish) {
+        while (ns.isRunning(pid)) {
+            await ns.sleep(50);
+        }
+    } else {
+        throw Error(`Failed to run script (${script} on ${host}) for some reason`);
+    }
 }
 
 export async function main(ns: NS) {

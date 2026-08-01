@@ -1,6 +1,6 @@
 import { NS } from "@ns";
 
-import { getMostLucrativeServer, hackAndGetAllAccessServers } from "/scripts/helpers.js";
+import { getMostLucrativeServer, hackAndGetAllAccessServers, runScript } from "/scripts/helpers.js";
 import { ScriptRunnerManager } from "/scripts/scriptRunner.js";
 import { buyHacknetNodes } from "/scripts/hacknet";
 import { attemptUpgradeTarget, spendHacknetHashes, HashUpgrades } from "/scripts/hacknetHash";
@@ -125,9 +125,9 @@ export function getThreadStats(ns: NS, target: string, amountToHack: number, num
     const numGrowWeakenThreadsRaw = ns.growthAnalyzeSecurity(numGrowThreads, undefined, numCores) / weakenAmount;
     const numGrowWeakenThreads = Math.ceil(numGrowWeakenThreadsRaw);
 
-    const hackTimeMs = ns.getHackTime(target);
-    const weakenTimeMs = ns.getWeakenTime(target);
-    const growTimeMs = ns.getGrowTime(target);
+    const hackTimeMs = ns.formulas.hacking.hackTime(optimalServer, player);
+    const weakenTimeMs = ns.formulas.hacking.weakenTime(optimalServer, player);
+    const growTimeMs = ns.formulas.hacking.growTime(optimalServer, player);
 
     const maxTime = Math.max(hackTimeMs, weakenTimeMs, growTimeMs);
     const additionalHackTimeMs = maxTime - hackTimeMs;
@@ -175,17 +175,6 @@ export function getBatchStats(ns: NS, target: string, amountToHack: number, numC
 
 function isHackingLevelPastThreshold(ns: NS, oldLevel: number, thresh: number) {
     return ns.getHackingLevel() >= oldLevel * thresh;
-}
-
-export async function torBuy(ns: NS) {
-    const pid = ns.exec("/scripts/torBuy.js", "home");
-    if (pid != 0) {
-        while (ns.isRunning(pid)) {
-            await ns.sleep(50);
-        }
-    } else {
-        throw Error("Failed to run torBuy for some reason");
-    }
 }
 
 export async function smartHack(
@@ -311,7 +300,7 @@ export async function main(ns: NS) {
         // Make sure there is enough Ram for this script
         const reservedRam = ns.getScriptRam("/scripts/smartHack.js") + 8;
         const batchResetTimeMs = 1000 * 60 * 10;
-        const amountToHack = 0.01;
+        const amountToHack = 0.001;
         // Since our calculations include our cores (more than 1), we can only use home, otherwise, we could use ""
         const batchHostname = "";
         // const batchHostname = "home";
@@ -325,14 +314,19 @@ export async function main(ns: NS) {
         const upgradeCloudServers = true;
 
         const doTorBuy = true;
+        const doComputerUpgrade = true;
 
         while (true) {
             const target = getMostLucrativeServer(ns);
             // const target = "foodnstuff";
             // const target = "phantasy";
 
+            if (doComputerUpgrade) {
+                await runScript(ns, "/scripts/upgradeComputer.js", "home", true);
+            }
+
             if (doTorBuy) {
-                await torBuy(ns);
+                await runScript(ns, "/scripts/torBuy.js", "home", true);
             }
 
             if (upgradeCloudServers) {
