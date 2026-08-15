@@ -18,9 +18,9 @@ export function buyCloudServers(ns: NS, isVerbose = false) {
     }
 
     if (isVerbose) {
-        ns.tprint("Current Cloud Server Status:")
+        ns.tprintf(`Current Cloud Server Status:`)
         for (const server of ns.cloud.getServerNames()) {
-            ns.tprintf("\t%s: %d", server, ns.getServer(server).maxRam);
+            ns.tprintf(`\t${server}: ${ns.getServer(server).maxRam}`);
         }
     }
 }

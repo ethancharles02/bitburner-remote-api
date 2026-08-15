@@ -58,11 +58,39 @@ const contestingFactions = [
     factionNames.Volhaven,
 ]
 
+function getBestContestingFaction(ns: NS, invitations: FactionName[]): string {
+    const ownedAugments = ns.singularity.getOwnedAugmentations(true);
+    // The best faction is currently set to be the faction that offers the most augments
+    let maxAugmentCount = 0;
+    let bestContestingFaction = "";
+    // TODO test this
+    for (const factionName of contestingFactions) {
+        if (invitations.includes(factionName)) {
+            const augments = ns.singularity.getAugmentationsFromFaction(factionName);
+            const numAugments = augments.reduce((sum, curAugment) => sum + (!ownedAugments.includes(curAugment) ? 1 : 0), 0);
+            if (numAugments > maxAugmentCount) {
+                maxAugmentCount = numAugments;
+                bestContestingFaction = factionName;
+            }
+        }
+    }
+
+    return bestContestingFaction;
+}
+
 export function joinAvailableFactions(ns: NS) {
-    for (const factionName of ns.singularity.checkFactionInvitations()) {
-        if (!contestingFactions.includes(factionName as FactionName)) {
+    const invitations = ns.singularity.checkFactionInvitations();
+
+    for (const factionName of invitations) {
+        // Allow if it is the best contesting faction
+        if (!contestingFactions.includes(factionName)) {
             ns.singularity.joinFaction(factionName);
         }
+    }
+
+    const bestContestingFaction = getBestContestingFaction(ns, invitations);
+    if (bestContestingFaction != "") {
+        ns.singularity.joinFaction(bestContestingFaction as FactionName);
     }
 }
 
@@ -80,5 +108,5 @@ export function allFactionsJoined(ns: NS) {
 export async function main(ns: NS) {
     joinAvailableFactions(ns);
 
-    ns.tprint("\nFaction join script finished running\n")
+    ns.tprintf(`\nFaction join script finished running\n`)
 }

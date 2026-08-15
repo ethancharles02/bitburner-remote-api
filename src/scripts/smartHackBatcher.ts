@@ -1,6 +1,6 @@
 import { NS } from "@ns";
 
-import { getSortedLucrativeServers, hackAndGetAllAccessServers, runScript } from "/scripts/helpers.js";
+import { getSortedLucrativeServers, hackAndGetAllAccessServers, runScript, batchFile } from "/scripts/helpers.js";
 import { getRequiredThreadsForBatch, applyHashUpgrades } from "/scripts/smartHack.js";
 import { ScriptRunnerManager } from "/scripts/scriptRunner.js";
 import { buyCloudServers } from "/scripts/cloudServers";
@@ -10,13 +10,13 @@ export async function main(ns: NS) {
     const batchResetTimeMs = 1000 * 60 * 10;
     // TODO this could be adjusted such that it uses a binary search to check values (with a
     // granularity of 0.01) and find the maximum for the amount of targets?
-    const amountToHack = 0.9;
+    const amountToHack = 0.01;
     const targetBufferTime = 100;
     const bufferTimeLimitMs = 50;
-    const maxTargets = 3;
+    const maxTargets = 1;
 
-    const doHashUpgrades = true;
-    const doUpgradeHacknetNodes = true;
+    const doHashUpgrades = false;
+    const doUpgradeHacknetNodes = false;
     const includeHacknetServers = false;
     const spendLeftoverHashes = false;
     const upgradeCloudServers = true;
@@ -32,6 +32,7 @@ export async function main(ns: NS) {
     // Ram for use of smartHack scripts
     const reservedRam = (smartHackRam * maxTargets) + thisScriptRam + additionalAllottedRam;
     while (true) {
+        await runScript(ns, "/scripts/killBatches.js", "home", true);
         if (doComputerUpgrade) {
             await runScript(ns, "/scripts/upgradeComputer.js", "home", true);
         }
@@ -55,16 +56,15 @@ export async function main(ns: NS) {
                 runner.addHost(host);
             }
         }
-        runner.addScript("weaken.js", true, true, "");
+        runner.addScript(batchFile.weaken, true, true, "");
 
-        const ramCost = runner.hosts["home"].scriptsRamCost["weaken.js"];
-        const threadsAvailableObj = runner.getThreadsAvailableObj("weaken.js");
+        const ramCost = runner.hosts["home"].scriptsRamCost[batchFile.weaken];
+        const threadsAvailableObj = runner.getThreadsAvailableObj(batchFile.weaken);
         // For each target key, an array of hosts and allotted ram amounts follows
         const targetBatchManifest: Record<string, [Array<string>, Array<number>]> = {};
 
         let hostsToDelete = [];
         for (const target of targets) {
-            // TODO convert all printf calls to be template literals (ie. `print ${testVar}`)
             // TODO currently calculating with 1 assumed core. A major refactor of the script runner
             // could be done to instead allot ram on a server basis and use their cores (ie. we
             // specify how much we need to weaken/grow and the scriptrunner decides which servers to
@@ -117,7 +117,7 @@ export async function main(ns: NS) {
         }
 
         if (Object.keys(targetBatchManifest).length >= maxTargets) {
-            ns.tprint("WARNING: Max targets reached for smarthacking, consider increasing hack amount");
+            ns.tprintf(`WARNING: Max targets reached for smarthacking, consider increasing hack amount`);
         }
 
         while (ids.some(id => ns.isRunning(id))) {

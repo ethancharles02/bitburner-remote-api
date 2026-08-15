@@ -70,7 +70,7 @@ export async function main(ns: NS) {
                     }
                 }
             } catch (error) {
-                ns.tprintf("Caught error, resetting board: %s", error);
+                ns.tprintf(`Caught error, resetting board: ${error}`);
                 break;
             }
         }

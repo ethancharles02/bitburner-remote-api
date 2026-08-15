@@ -11,15 +11,15 @@ export function torBuy(ns: NS, verbose = false) {
             for (const program of programs) {
                 const cost = ns.singularity.getDarkwebProgramCost(program)
                 if (cost == 0) {
-                    ns.tprint(`Purchased ${program}`);
+                    ns.tprintf(`Purchased ${program}`);
                 } else {
-                    ns.tprint(`${program}: ${cost}`);
+                    ns.tprintf(`${program}: ${cost}`);
                 }
             }
         }
     } else {
         if (verbose) {
-            ns.tprint("Can't purchase tor router");
+            ns.tprintf(`Can't purchase tor router`);
         }
     }
 }

@@ -56,7 +56,7 @@ export class ScriptRunner {
             if (this.ns.fileExists(scriptPath, "home")) {
                 this.ns.scp(scriptPath, this.hostname, "home");
             } else {
-                this.ns.print("Couldn't find script: %s to refresh", scriptPath);
+                this.ns.print(`Couldn't find script: ${scriptPath} to refresh`);
                 return false;
             }
         }
@@ -65,13 +65,13 @@ export class ScriptRunner {
             if (downloadScript && this.ns.fileExists(scriptPath, "home")) {
                 this.ns.scp(scriptPath, this.hostname, "home");
             } else {
-                this.ns.print("No file found with path: %s on host: %s", scriptPath, this.hostname)
+                this.ns.print(`No file found with path: ${scriptPath} on host: ${this.hostname}`)
                 return false;
             }
         }
 
         this.scriptsRamCost[scriptPath] = this.ns.getScriptRam(scriptPath, this.hostname);
-        this.ns.printf("ramCost: %f", this.scriptsRamCost[scriptPath]);
+        this.ns.print(`ramCost: ${this.scriptsRamCost[scriptPath]}`);
         return true;
     }
 
@@ -91,14 +91,14 @@ export class ScriptRunner {
      * */
     runScript(scriptPath: string, numThreads: number, ...scriptArgs: Array<string>) {
         if (!(scriptPath in this.scriptsRamCost)) {
-            this.ns.printf("Script wasn't added: %s", scriptPath);
+            this.ns.print(`Script wasn't added: ${scriptPath}`);
             return 0;
         }
         if (numThreads == -1) {
             numThreads = this.getMaxThreadsForScript(scriptPath);
         }
         if (numThreads <= 0) {
-            this.ns.printf("Not enough ram available for any threads: %s", scriptPath);
+            this.ns.print(`Not enough ram available for any threads: ${scriptPath}`);
             return 0;
         }
         const pid = this.ns.exec(scriptPath, this.hostname, { threads: numThreads }, ...scriptArgs);
@@ -132,7 +132,7 @@ export class ScriptRunnerManager {
      * */
     addHost(hostname: string, allottedRam: number | undefined = undefined) {
         if (!this.ns.serverExists(hostname)) {
-            this.ns.printf("Couldn't find server with name: %s", hostname);
+            this.ns.print(`Couldn't find server with name: ${hostname}`);
         }
         if (allottedRam !== undefined && allottedRam <= 0) {
             throw Error(`Can't reserve ${allottedRam} to server: ${hostname}`);
@@ -142,7 +142,7 @@ export class ScriptRunnerManager {
     }
 
     invalidHostname(hostname: string) {
-        this.ns.printf("Couldn't find hostname in hosts: %s", hostname);
+        this.ns.print(`Couldn't find hostname in hosts: ${hostname}`);
         throw Error("No Hostname. See log");
     }
 

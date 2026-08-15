@@ -1,5 +1,13 @@
 import { NS } from "@ns";
 
+export enum batchFile {
+    hack = "hack.js",
+    weaken = "weaken.js",
+    grow = "grow.js",
+    smartHack = "/scripts/smartHack.js",
+    smartHackBatcher = "/scripts/smartHackBatcher.js"
+}
+
 /**
  * Opens all possible ports on a target and nukes them
  * */
@@ -86,9 +94,9 @@ export function getSortedLucrativeServers(ns: NS) {
     const player = ns.getPlayer();
     const formulasExists = ns.fileExists("Formulas.exe");
     if (formulasExists) {
-        ns.tprintf("Formulas Utility Estimation:");
+        ns.tprintf(`Formulas Utility Estimation:`);
     } else {
-        ns.tprintf("Heuristic Utility Estimation:");
+        ns.tprintf(`Heuristic Utility Estimation:`);
     }
     const serversValues: Record<string, number> = {};
     for (const server of servers) {
@@ -114,7 +122,7 @@ export function getSortedLucrativeServers(ns: NS) {
 
     const sortedServers = Object.keys(serversValues).sort((a: string, b: string) => serversValues[b] - serversValues[a])
     for (const server of sortedServers) {
-        ns.tprintf("\t%s: %f", server, serversValues[server]);
+        ns.tprintf(`\t${server}: ${serversValues[server]}`);
     }
 
     return sortedServers;

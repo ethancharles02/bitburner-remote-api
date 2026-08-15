@@ -56,6 +56,6 @@ export async function main(ns: NS) {
     const pathList = getPathToServer(ns, serverTarget);
     const connectString = createJoinString(pathList);
     navigator.clipboard.writeText(connectString);
-    ns.tprint(connectString);
-    ns.tprint("Added to clipboard");
+    ns.tprintf(connectString);
+    ns.tprintf(`Added to clipboard`);
 }
