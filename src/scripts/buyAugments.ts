@@ -1,8 +1,6 @@
 import { FactionName, NS } from "@ns";
-import { factionNames } from "/scripts/factions/factionJoiner"
+import { factionNames, neurofluxGovernor } from "./factions/factionConstants"
 import { neededMoneyForRep } from "./factions/meetFactionRequirements";
-
-export const neurofluxGovernor = "NeuroFlux Governor";
 
 type AugmentPurchase = {
     readonly factionName: FactionName;

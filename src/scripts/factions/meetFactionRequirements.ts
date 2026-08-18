@@ -1,31 +1,53 @@
-import { NS, CityName, CompanyName, JobField, FactionName, Player, JobName } from "@ns";
+import { NS, CityName, CompanyName, FactionName, Player } from "@ns";
 import { hackAndGetAllAccessServers } from "/scripts/helpers.js";
-import { factionNames, joinAvailableFactions, allFactionsJoined } from "./factionJoiner";
+import { locationFactions, companyFactions, neurofluxGovernor, factionNames, contestingFactions } from "./factionConstants";
 import { getPathToServer } from "/scripts/getPathToServer.js";
-import { neurofluxGovernor } from "/scripts/buyAugments";
 
-const locationFactions: Partial<Record<FactionName, CityName>> = {
-    [factionNames.TianDiHui]: "New Tokyo",
+function getBestContestingFaction(ns: NS, invitations: FactionName[]): string {
+    const ownedAugments = ns.singularity.getOwnedAugmentations(true);
+    // The best faction is currently set to be the faction that offers the most augments
+    let maxAugmentCount = 0;
+    let bestContestingFaction = "";
+    // TODO test this
+    for (const factionName of contestingFactions) {
+        if (invitations.includes(factionName)) {
+            const augments = ns.singularity.getAugmentationsFromFaction(factionName);
+            const numAugments = augments.reduce((sum, curAugment) => sum + (!ownedAugments.includes(curAugment) ? 1 : 0), 0);
+            if (numAugments > maxAugmentCount) {
+                maxAugmentCount = numAugments;
+                bestContestingFaction = factionName;
+            }
+        }
+    }
 
-    [factionNames.Aevum]: "Aevum",
-    [factionNames.Chongqing]: "Chongqing",
-    [factionNames.Ishima]: "Ishima",
-    [factionNames.NewTokyo]: "New Tokyo",
-    [factionNames.Sector12]: "Sector-12",
-    [factionNames.Volhaven]: "Volhaven",
+    return bestContestingFaction;
 }
 
-const companyFactions: Partial<Record<FactionName, CompanyName>> = {
-    [factionNames.ECorp]: "ECorp",
-    [factionNames.MegaCorp]: "MegaCorp",
-    [factionNames.KuaiGongInternational]: "KuaiGong International",
-    [factionNames.FourSigma]: "Four Sigma",
-    [factionNames.NWO]: "NWO",
-    [factionNames.BladeIndustries]: "Blade Industries",
-    [factionNames.OmniTekIncorporated]: "OmniTek Incorporated",
-    [factionNames.BachmanAndAssociates]: "Bachman & Associates",
-    [factionNames.ClarkeIncorporated]: "Clarke Incorporated",
-    [factionNames.FulcrumSecretTechnologies]: "Fulcrum Technologies"
+export function joinAvailableFactions(ns: NS) {
+    const invitations = ns.singularity.checkFactionInvitations();
+
+    for (const factionName of invitations) {
+        // Allow if it is the best contesting faction
+        if (!contestingFactions.includes(factionName)) {
+            ns.singularity.joinFaction(factionName);
+        }
+    }
+
+    const bestContestingFaction = getBestContestingFaction(ns, invitations);
+    if (bestContestingFaction != "") {
+        ns.singularity.joinFaction(bestContestingFaction as FactionName);
+    }
+}
+
+export function allFactionsJoined(ns: NS) {
+    const player = ns.getPlayer();
+    let allFactionsJoined = true;
+    for (const factionName of Object.values(factionNames)) {
+        if (!contestingFactions.includes(factionName)) {
+            allFactionsJoined &&= player.factions.includes(factionName);
+        }
+    }
+    return allFactionsJoined;
 }
 
 async function handleBackdoorFactions(ns: NS) {

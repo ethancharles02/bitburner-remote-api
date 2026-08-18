@@ -10,7 +10,7 @@ export async function main(ns: NS) {
     const batchResetTimeMs = 1000 * 60 * 10;
     // TODO this could be adjusted such that it uses a binary search to check values (with a
     // granularity of 0.01) and find the maximum for the amount of targets?
-    const amountToHack = 0.5;
+    const amountToHack = 0.99;
     const targetBufferTime = 100;
     const bufferTimeLimitMs = 50;
     const maxTargets = 1;
