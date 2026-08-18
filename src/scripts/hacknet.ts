@@ -37,9 +37,31 @@ function getUpgradeMaxMinStats(ns: NS, upgradeFuncs: HacknetUpgrades[]) {
     return maxMinStats;
 }
 
+function getHacknetMoneyPerSec(ns: NS) {
+    const numNodes = ns.hacknet.numNodes();
+    let totalProduction = 0;
+    for (let i = 0; i < numNodes; i++) {
+        totalProduction += ns.hacknet.getNodeStats(i).production;
+    }
+    return (totalProduction / 4) * 1e6;
+}
+
 export function buyHacknetNodes(ns: NS) {
-    // Buy all possible nodes first
-    while (ns.hacknet.purchaseNode() != -1);
+    const numNodes = ns.hacknet.numNodes();
+    if (numNodes < ns.hacknet.maxNumNodes()) {
+        const moneyPerSec = getHacknetMoneyPerSec(ns);
+        const neededMoney = ns.hacknet.getPurchaseNodeCost() - ns.getPlayer().money;
+        // Time in seconds to wait for node purchases
+        const timeThreshold = 60 * 10; // 10 Minutes
+        const timeToPurchase = moneyPerSec > 0 ? neededMoney / moneyPerSec : Infinity;
+        // If the nodes can produce enough money within the threshold to buy a node, skip upgrades
+        if (neededMoney > 0 && timeToPurchase < timeThreshold) {
+            ns.tprint("Skipping hacknet upgrades to buy a hacknet node");
+            return;
+        }
+        // Buy all possible nodes first
+        while (ns.hacknet.purchaseNode() != -1);
+    }
 
     // Loop through these functions maxing out the first one and going down the list after that
     const upgradeFuncs: HacknetUpgrades[] = [
@@ -49,7 +71,6 @@ export function buyHacknetNodes(ns: NS) {
         [NodeStats.ram, ns.hacknet.upgradeRam]
     ];
 
-    const numNodes = ns.hacknet.numNodes();
     let upgradeSuccessful = true;
     while (upgradeSuccessful) {
         // Initialize the object as high min and low max for each nodestat

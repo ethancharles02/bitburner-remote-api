@@ -10,13 +10,16 @@ export async function main(ns: NS) {
     const batchResetTimeMs = 1000 * 60 * 10;
     // TODO this could be adjusted such that it uses a binary search to check values (with a
     // granularity of 0.01) and find the maximum for the amount of targets?
-    const amountToHack = 0.01;
+    const amountToHack = 0.5;
     const targetBufferTime = 100;
     const bufferTimeLimitMs = 50;
     const maxTargets = 1;
 
-    const doHashUpgrades = false;
-    const doUpgradeHacknetNodes = false;
+    const doHashUpgrades = true;
+    // TODO Consider adjusting the optimal target finding to account for the total cost of hashes it
+    // would take to optimize the server fully. This could just be the main priority as a flag to
+    // set?
+    const doUpgradeHacknetNodes = true;
     const includeHacknetServers = false;
     const spendLeftoverHashes = false;
     const upgradeCloudServers = true;
@@ -46,6 +49,7 @@ export async function main(ns: NS) {
         }
 
         const targets = getSortedLucrativeServers(ns);
+        // const targets = ["phantasy"];
         const hosts = ["home", ...hackAndGetAllAccessServers(ns, includeHacknetServers)];
 
         const runner = new ScriptRunnerManager(ns);

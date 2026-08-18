@@ -23,6 +23,11 @@ export function applyHashUpgrades(ns: NS, doUpgradeHacknetNodes: boolean, doUpgr
     }
 }
 
+function isServerPrepped(ns: NS, server: string): boolean {
+    return ns.getServerSecurityLevel(server) <= ns.getServerMinSecurityLevel(server)
+        && ns.getServerMoneyAvailable(server) >= ns.getServerMaxMoney(server);
+}
+
 /**
  * Grows a target to max with counteracting weakens interleaved
  * */
@@ -200,8 +205,10 @@ export async function smartHack(
     const curSecurity = ns.getServerSecurityLevel(target);
     ns.tprintf(`${target} Server Deviation:\n\tMoney: ${curMoney} / ${moneyThresh} (${curMoney / moneyThresh})\n\tSecurity: ${curSecurity} / ${securityThresh} (${curSecurity / securityThresh})`);
 
-    // Grow and then counteract with weaken
-    await prepServer(ns, scriptRunnerManager, numCores, weakenAmount, target, moneyThresh, securityThresh);
+    if (!isServerPrepped(ns, target)) {
+        // Grow and then counteract with weaken
+        await prepServer(ns, scriptRunnerManager, numCores, weakenAmount, target, moneyThresh, securityThresh);
+    }
 
     // Estimating the higher cost weaken instead of cheaper hack. If this needs to be recalculated, you should wait for all scripts to be finished first since they mess with the calculation
     const estimatedNumAvailableThreads = scriptRunnerManager.getPossibleThreads(batchFile.weaken, batchHostname);
@@ -241,8 +248,22 @@ export async function smartHack(
             bufferTimeMs = bufferTimeLimitMs;
         }
 
-        // Adds 0.3 ms of buffer for each script + 1 additional for startup time
-        const firstBatchExtraBuffer = batchStats.numBatches * (4 * 0.3) + 1;
+        // TODO this is only temporary for fixing the prep bug
+        if (!isServerPrepped(ns, target)) {
+            throw Error(`${target} was not prepped by the end of a batch cycle`);
+        }
+
+        let firstBatchExtraBuffer = 0;
+        if (batchStats.numBatches > 1) {
+            // Adds 0.3 ms of buffer for each script + 1 additional for startup time
+            firstBatchExtraBuffer = batchStats.numBatches * (4 * 0.3) + 1;
+
+            // TODO one idea to fix the prep bug is to create a batch offset to remove to make sure that
+            // it still ends within the expected time (ie. longest time + (buffer time * 3))
+            // const totalBatchTime = batchStats.threadStats.maxTime + (bufferTimeMs * 3)
+            // const batchOffset = Math.ceil(firstBatchExtraBuffer / totalBatchTime);
+        }
+
         ns.tprintf(`\tNumBatches: ${batchStats.numBatches}\n\tBufferTime: ${batchStats.bufferTimeMs}\n\tAdditionalBufferTime: ${firstBatchExtraBuffer}`);
         const firstProcessIds = [];
         let j = 0;

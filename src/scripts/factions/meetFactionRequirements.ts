@@ -1,4 +1,4 @@
-import { NS, CityName, CompanyName, JobField, FactionName, Player } from "@ns";
+import { NS, CityName, CompanyName, JobField, FactionName, Player, JobName } from "@ns";
 import { hackAndGetAllAccessServers } from "/scripts/helpers.js";
 import { factionNames, joinAvailableFactions, allFactionsJoined } from "./factionJoiner";
 import { getPathToServer } from "/scripts/getPathToServer.js";
@@ -46,19 +46,23 @@ async function handleBackdoorFactions(ns: NS) {
     ns.singularity.connect("home");
 }
 
+// TODO this involves constantly traveling since location factions fight and will rescind their
+// invitation if you join specific ones. Update it to be smarter
 async function handleLocationFactions(ns: NS) {
     const player = ns.getPlayer();
-    for (const faction of Object.keys(locationFactions) as FactionName[]) {
-        const cityName = locationFactions[faction] as CityName;
-        const hasInvite = ns.singularity.checkFactionInvitations().includes(faction);
-        const inFaction = player.factions.includes(faction);
-        if (cityName && !(inFaction || hasInvite)) {
-            ns.singularity.travelToCity(cityName);
-            // Waits to give the game time to recognize and send faction invite
-            await ns.sleep(5000);
+    if (player.money > 20e6) {
+        for (const faction of Object.keys(locationFactions) as FactionName[]) {
+            const cityName = locationFactions[faction] as CityName;
+            const hasInvite = ns.singularity.checkFactionInvitations().includes(faction);
+            const inFaction = player.factions.includes(faction);
+            if (cityName && !(inFaction || hasInvite)) {
+                ns.singularity.travelToCity(cityName);
+                // Waits to give the game time to recognize and send faction invite
+                await ns.sleep(5000);
+            }
         }
+        ns.singularity.travelToCity("Sector-12");
     }
-    ns.singularity.travelToCity("Sector-12");
 }
 
 function handleCompanyFactions(ns: NS) {
@@ -80,8 +84,7 @@ enum WorkType {
 type WorkOption = {
     readonly workType: WorkType;
     readonly workName: string;
-    readonly repGain: number;
-    readonly neededRepAmount: number;
+    readonly secondsToCompletion: number;
 }
 
 // Copied from the source code
@@ -103,25 +106,52 @@ function getMaxRepReqFromAugments(ns: NS, augments: string[], augmentFilter: str
     return maxRepReq;
 }
 
+function getPlayerRepGainsFromJob(ns: NS, player: Player, companyName: CompanyName) {
+    const jobName = player.jobs[companyName];
+    if (jobName) {
+        const repGains = 5 * ns.formulas.work.companyGains(player, companyName, jobName, ns.singularity.getCompanyFavor(companyName)).reputation;
+        return repGains;
+    } else {
+        throw Error("getPlayerRepGainsFromJob called when the player doesn't have this job");
+    }
+}
+
+function getPlayerRepGainsFromFaction(ns: NS, player: Player, factionName: FactionName) {
+    const repGains = 5 * ns.formulas.work.factionGains(player, "hacking", ns.singularity.getFactionFavor(factionName)).reputation;
+    return repGains;
+}
+
 function getCompanyWorkOptions(ns: NS, player: Player, companyFactions: Partial<Record<FactionName, CompanyName>>): WorkOption[] {
     const companyRepReq = 400_000;
     const workOptions: WorkOption[] = [];
+    const ownedAugments = ns.singularity.getOwnedAugmentations(true);
+
+    ns.tprintf(`Company Rep Options:`);
     // Loop through all companies and push all viable options with how much rep is needed
     for (const [factionName, companyName] of Object.entries(companyFactions)) {
         if (!player.factions.includes(factionName as FactionName)) {
             if (Object.keys(player.jobs).includes(companyName)) {
                 const jobName = player.jobs[companyName];
                 if (jobName) {
-                    const repGains = 5 * ns.formulas.work.companyGains(player, companyName, jobName, ns.singularity.getCompanyFavor(companyName)).reputation;
+                    const repGains = getPlayerRepGainsFromJob(ns, player, companyName);
                     const curRep = ns.singularity.getCompanyRep(companyName);
                     const neededRepAmount = companyRepReq - curRep;
+
                     if (neededRepAmount > 0) {
+                        const augmentations = ns.singularity.getAugmentationsFromFaction(factionName as FactionName);
+                        const maxAugmentRepReq = getMaxRepReqFromAugments(ns, augmentations, ownedAugments);
+                        const factionRepGain = getPlayerRepGainsFromFaction(ns, player, factionName as FactionName);
+
+                        const secondsToCompletion = (neededRepAmount / repGains) + (maxAugmentRepReq / factionRepGain);
+
+                        ns.tprintf(`\t${companyName}:`);
+                        ns.tprintf(`\t\tWork: ${neededRepAmount.toFixed(2)} / ${repGains.toFixed(2)}`);
+                        ns.tprintf(`\t\tAugments: ${maxAugmentRepReq.toFixed(2)} / ${factionRepGain.toFixed(2)}`);
                         workOptions.push(
                             {
                                 workName: companyName,
-                                repGain: repGains,
                                 workType: WorkType.Company,
-                                neededRepAmount: neededRepAmount
+                                secondsToCompletion: secondsToCompletion
                             }
                         );
                     }
@@ -133,7 +163,7 @@ function getCompanyWorkOptions(ns: NS, player: Player, companyFactions: Partial<
     return workOptions;
 }
 
-function neededMoneyForRep(ns: NS, neededRep: number, player: Player): number {
+export function neededMoneyForRep(ns: NS, neededRep: number, player: Player): number {
     return (neededRep * 1e6) / (player.mults.faction_rep * ns.getBitNodeMultipliers().FactionWorkRepGain);
 }
 
@@ -144,15 +174,17 @@ export function getRepNeededToDonate(ns: NS): number {
 
 function getFactionWorkOptions(ns: NS, player: Player): WorkOption[] {
     const workOptions: WorkOption[] = [];
+    const lowPriWorkOptions: WorkOption[] = [];
     const ownedAugments = ns.singularity.getOwnedAugmentations(true);
 
     const neededFavor = ns.getFavorToDonate();
     const repNeededToDonate = getRepNeededToDonate(ns);
 
+    ns.tprintf(`Faction Rep Options:`);
     // Loop through all factions and push all viable options with how much rep is needed for max augment
     for (const factionName of player.factions) {
         // The timing is 200ms so multiply by 5
-        const repGains = 5 * ns.formulas.work.factionGains(player, "hacking", ns.singularity.getFactionFavor(factionName)).reputation;
+        const repGains = getPlayerRepGainsFromFaction(ns, player, factionName);
         const augmentations = ns.singularity.getAugmentationsFromFaction(factionName);
         let curRep = ns.singularity.getFactionRep(factionName);
         const curFavor = ns.singularity.getFactionFavor(factionName);
@@ -163,9 +195,22 @@ function getFactionWorkOptions(ns: NS, player: Player): WorkOption[] {
             let neededRepAmount = maxRepReq - curRep;
             if (neededRepAmount > 0) {
                 if (curFavor >= neededFavor) {
-                    const result = ns.singularity.donateToFaction(factionName, neededMoneyForRep(ns, neededRepAmount, player));
-                    if (result) {
-                        continue;
+                    const neededMoney = neededMoneyForRep(ns, neededRepAmount, player);
+                    // If we have enough money, purchase the rep, otherwise, add it to the low
+                    // priority list
+                    if (player.money >= neededMoney) {
+                        const result = ns.singularity.donateToFaction(factionName, neededMoney);
+                        if (result) {
+                            continue;
+                        }
+                    } else {
+                        lowPriWorkOptions.push(
+                            {
+                                workName: factionName,
+                                workType: WorkType.Faction,
+                                secondsToCompletion: neededRepAmount / repGains
+                            }
+                        )
                     }
                 }
                 curRep = ns.singularity.getFactionRep(factionName);
@@ -175,33 +220,35 @@ function getFactionWorkOptions(ns: NS, player: Player): WorkOption[] {
                         continue;
                     }
                 }
+                ns.tprintf(`\t${factionName}: ${neededRepAmount.toFixed(2)} / ${repGains.toFixed(2)}`);
                 workOptions.push(
                     {
                         workName: factionName,
-                        repGain: repGains,
                         workType: WorkType.Faction,
-                        neededRepAmount: neededRepAmount
+                        secondsToCompletion: neededRepAmount / repGains
                     }
                 );
             }
         }
     }
 
-    return workOptions;
+    if (workOptions.length > 0) {
+        return workOptions;
+    } else {
+        return lowPriWorkOptions;
+    }
 }
 
 function workForOptimalOption(ns: NS): boolean {
     const player = ns.getPlayer();
     const workOptions: WorkOption[] = [];
 
-    // TODO improve company work options to have timing for the augments after joining the faction
-    // as well
     workOptions.push(...getCompanyWorkOptions(ns, player, companyFactions));
     workOptions.push(...getFactionWorkOptions(ns, player));
 
     // Get faction/company that needs the smallest amount of rep
     if (workOptions.length > 0) {
-        workOptions.sort((a, b) => (a.neededRepAmount / a.repGain) - (b.neededRepAmount / b.repGain));
+        workOptions.sort((a, b) => (a.secondsToCompletion) - (b.secondsToCompletion));
         const topOption = workOptions[0];
         if (topOption.workType == WorkType.Company) {
             ns.singularity.workForCompany(topOption.workName as CompanyName, false);
@@ -214,8 +261,8 @@ function workForOptimalOption(ns: NS): boolean {
 
     ns.tprintf(`Work Option Analysis:`);
     for (const workOption of workOptions) {
-        const minutesToCompletion = ((workOption.neededRepAmount / workOption.repGain) / 60).toFixed(0);
-        ns.tprintf(`\t${workOption.workName}: ${workOption.neededRepAmount.toFixed(2)} / ${workOption.repGain.toFixed(2)} (${minutesToCompletion} minutes)`);
+        const minutesToCompletion = ((workOption.secondsToCompletion) / 60).toFixed(0);
+        ns.tprintf(`\t${workOption.workName}: ${minutesToCompletion} minutes`);
     }
 
     return false;
