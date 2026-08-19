@@ -217,17 +217,6 @@ export async function smartHack(
     const oldTime = performance.now();
     let batchSetCount = 0;
     while (performance.now() - oldTime < batchResetTimeMs) {
-        // Make sure the second to last set of ids is completed (means that there should never be
-        // more than 2 sets of batches running at a time)
-        if (lastProcessIds.length == 2) {
-            while (lastProcessIds[0].some(id => ns.isRunning(id))) {
-                await ns.sleep(10);
-            }
-            lastProcessIds.splice(0);
-        } else if (lastProcessIds.length > 2) {
-            throw Error("Something went wrong, there shouldn't be more than 2 sets of batches");
-        }
-
         const level = ns.getHackingLevel();
 
         ns.tprintf(`\n${target} Batch Set: ${batchSetCount}`);
@@ -254,20 +243,22 @@ export async function smartHack(
         }
 
         let firstBatchExtraBuffer = 0;
+        let batchOffset = 0;
         if (batchStats.numBatches > 1) {
             // Adds 0.3 ms of buffer for each script + 1 additional for startup time
             firstBatchExtraBuffer = batchStats.numBatches * (4 * 0.3) + 1;
 
-            // TODO one idea to fix the prep bug is to create a batch offset to remove to make sure that
-            // it still ends within the expected time (ie. longest time + (buffer time * 3))
-            // const totalBatchTime = batchStats.threadStats.maxTime + (bufferTimeMs * 3)
-            // const batchOffset = Math.ceil(firstBatchExtraBuffer / totalBatchTime);
+            const totalBatchTime = batchStats.threadStats.maxTime + (bufferTimeMs * 4)
+            batchOffset = Math.ceil(firstBatchExtraBuffer / totalBatchTime);
+            ns.tprintf(`\tRemoving ${batchOffset} batch(es) to account for additional buffer time`);
         }
 
-        ns.tprintf(`\tNumBatches: ${batchStats.numBatches}\n\tBufferTime: ${batchStats.bufferTimeMs}\n\tAdditionalBufferTime: ${firstBatchExtraBuffer}`);
+        const numBatches = batchStats.numBatches - batchOffset;
+
+        ns.tprintf(`\tNumBatches: ${numBatches}\n\tBufferTime: ${batchStats.bufferTimeMs}\n\tAdditionalBufferTime: ${firstBatchExtraBuffer}`);
         const firstProcessIds = [];
         let j = 0;
-        for (let i = 0; i < batchStats.numBatches; i++) {
+        for (let i = 0; i < numBatches; i++) {
             await scriptRunnerManager.runScript(batchFile.hack, batchHostname, false, batchStats.threadStats.numHackThreads, false, target, String(batchStats.threadStats.additionalHackTimeMs + bufferTimeMs * j++));
             await scriptRunnerManager.runScript(batchFile.weaken, batchHostname, false, batchStats.threadStats.numHackWeakenThreads, false, target, String(batchStats.threadStats.additionalWeakenTimeMs + bufferTimeMs * j++));
             await scriptRunnerManager.runScript(batchFile.grow, batchHostname, false, batchStats.threadStats.numGrowThreads, false, target, String(batchStats.threadStats.additionalGrowTimeMs + bufferTimeMs * j++));
@@ -275,7 +266,7 @@ export async function smartHack(
             if (i == 0) {
                 firstProcessIds.push(...await scriptRunnerManager.runScript(batchFile.weaken, batchHostname, false, batchStats.threadStats.numGrowWeakenThreads, false, target, String(batchStats.threadStats.additionalWeakenTimeMs + bufferTimeMs * j++)));
                 j += firstBatchExtraBuffer / bufferTimeMs;
-            } else if (i == batchStats.numBatches - 1) {
+            } else if (i == numBatches - 1) {
                 lastProcessIds.push(await scriptRunnerManager.runScript(batchFile.weaken, batchHostname, false, batchStats.threadStats.numGrowWeakenThreads, false, target, String(batchStats.threadStats.additionalWeakenTimeMs + bufferTimeMs * j++)));
             } else {
                 await scriptRunnerManager.runScript(batchFile.weaken, batchHostname, false, batchStats.threadStats.numGrowWeakenThreads, false, target, String(batchStats.threadStats.additionalWeakenTimeMs + bufferTimeMs * j++));

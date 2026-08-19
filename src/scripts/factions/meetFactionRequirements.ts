@@ -2,6 +2,7 @@ import { NS, CityName, CompanyName, FactionName, Player } from "@ns";
 import { hackAndGetAllAccessServers } from "/scripts/helpers.js";
 import { locationFactions, companyFactions, neurofluxGovernor, factionNames, contestingFactions } from "./factionConstants";
 import { getPathToServer } from "/scripts/getPathToServer.js";
+import { Color } from "../colors";
 
 function getBestContestingFaction(ns: NS, invitations: FactionName[]): string {
     const ownedAugments = ns.singularity.getOwnedAugmentations(true);
@@ -107,6 +108,7 @@ type WorkOption = {
     readonly workType: WorkType;
     readonly workName: string;
     readonly secondsToCompletion: number;
+    readonly isLoPri: boolean;
 }
 
 // Copied from the source code
@@ -139,6 +141,7 @@ function getPlayerRepGainsFromJob(ns: NS, player: Player, companyName: CompanyNa
 }
 
 function getPlayerRepGainsFromFaction(ns: NS, player: Player, factionName: FactionName) {
+    // The timing is 200ms so multiply by 5
     const repGains = 5 * ns.formulas.work.factionGains(player, "hacking", ns.singularity.getFactionFavor(factionName)).reputation;
     return repGains;
 }
@@ -161,6 +164,7 @@ function getCompanyWorkOptions(ns: NS, player: Player, companyFactions: Partial<
 
                     if (neededRepAmount > 0) {
                         const augmentations = ns.singularity.getAugmentationsFromFaction(factionName as FactionName);
+                        // TODO this should be the min between this or the favor limit of rep
                         const maxAugmentRepReq = getMaxRepReqFromAugments(ns, augmentations, ownedAugments);
                         const factionRepGain = getPlayerRepGainsFromFaction(ns, player, factionName as FactionName);
 
@@ -173,7 +177,8 @@ function getCompanyWorkOptions(ns: NS, player: Player, companyFactions: Partial<
                             {
                                 workName: companyName,
                                 workType: WorkType.Company,
-                                secondsToCompletion: secondsToCompletion
+                                secondsToCompletion: secondsToCompletion,
+                                isLoPri: false
                             }
                         );
                     }
@@ -194,71 +199,98 @@ export function getRepNeededToDonate(ns: NS): number {
     return getRepFromFavor(neededFavor);
 }
 
+function getLowPriString(isLowPri: boolean): string {
+    return isLowPri ? " (Low Priority)" : "";
+}
+
+type NeededRep = {
+    readonly neededRep: number;
+    readonly isLowPri: boolean;
+}
+
+function getNeededRepForFaction(ns: NS, player: Player, ownedAugments: string[], faction: FactionName, doAttemptRepPurchase: boolean): NeededRep {
+    const neededFavor = ns.getFavorToDonate();
+    const augmentations = ns.singularity.getAugmentationsFromFaction(faction);
+    const curRep = ns.singularity.getFactionRep(faction);
+    const curFavor = ns.singularity.getFactionFavor(faction);
+    const totalRep = curRep + getRepFromFavor(curFavor);
+    const repNeededToDonate = getRepNeededToDonate(ns);
+    const maxRepReq = getMaxRepReqFromAugments(ns, augmentations, ownedAugments);
+
+    let neededRepAmount = 0;
+    let isLowPri = false;
+    if (maxRepReq > 0) {
+        neededRepAmount = Math.max(0, maxRepReq - curRep);
+        if (neededRepAmount > 0) {
+            if (doAttemptRepPurchase && curFavor >= neededFavor) {
+                const neededMoney = neededMoneyForRep(ns, neededRepAmount, player);
+                // If we have enough money, purchase the rep, otherwise, add it to the low
+                // priority list
+                if (player.money >= neededMoney) {
+                    const result = ns.singularity.donateToFaction(faction, neededMoney);
+                    if (result) {
+                        return {
+                            neededRep: 0,
+                            isLowPri: false
+                        };
+                    }
+                }
+            }
+
+            // Decides if it is low priority or not (otherwise, updates rep to amount needed for
+            // donation)
+            if (curFavor >= neededFavor || totalRep >= repNeededToDonate) {
+                isLowPri = true;
+            } else {
+                if (maxRepReq > repNeededToDonate) {
+                    neededRepAmount = repNeededToDonate - totalRep;
+                }
+            }
+        }
+    }
+    return {
+        neededRep: neededRepAmount,
+        isLowPri: isLowPri
+    };
+}
+
 function getFactionWorkOptions(ns: NS, player: Player): WorkOption[] {
     const workOptions: WorkOption[] = [];
-    const lowPriWorkOptions: WorkOption[] = [];
     const ownedAugments = ns.singularity.getOwnedAugmentations(true);
-
-    const neededFavor = ns.getFavorToDonate();
-    const repNeededToDonate = getRepNeededToDonate(ns);
 
     ns.tprintf(`Faction Rep Options:`);
     // Loop through all factions and push all viable options with how much rep is needed for max augment
     for (const factionName of player.factions) {
-        // The timing is 200ms so multiply by 5
         const repGains = getPlayerRepGainsFromFaction(ns, player, factionName);
-        const augmentations = ns.singularity.getAugmentationsFromFaction(factionName);
-        let curRep = ns.singularity.getFactionRep(factionName);
-        const curFavor = ns.singularity.getFactionFavor(factionName);
-        const totalRep = curRep + getRepFromFavor(curFavor);
-        const maxRepReq = getMaxRepReqFromAugments(ns, augmentations, ownedAugments);
 
-        if (maxRepReq > 0) {
-            let neededRepAmount = maxRepReq - curRep;
-            if (neededRepAmount > 0) {
-                if (curFavor >= neededFavor) {
-                    const neededMoney = neededMoneyForRep(ns, neededRepAmount, player);
-                    // If we have enough money, purchase the rep, otherwise, add it to the low
-                    // priority list
-                    if (player.money >= neededMoney) {
-                        const result = ns.singularity.donateToFaction(factionName, neededMoney);
-                        if (result) {
-                            continue;
-                        }
-                    } else {
-                        lowPriWorkOptions.push(
-                            {
-                                workName: factionName,
-                                workType: WorkType.Faction,
-                                secondsToCompletion: neededRepAmount / repGains
-                            }
-                        )
-                    }
+        const neededRep = getNeededRepForFaction(ns, player, ownedAugments, factionName, true);
+
+        if (neededRep.neededRep > 0) {
+            workOptions.push(
+                {
+                    workName: factionName,
+                    workType: WorkType.Faction,
+                    secondsToCompletion: neededRep.neededRep / repGains,
+                    isLoPri: neededRep.isLowPri
                 }
-                curRep = ns.singularity.getFactionRep(factionName);
-                if (maxRepReq > repNeededToDonate) {
-                    neededRepAmount = repNeededToDonate - totalRep;
-                    if (neededRepAmount <= 0) {
-                        continue;
-                    }
-                }
-                ns.tprintf(`\t${factionName}: ${neededRepAmount.toFixed(2)} / ${repGains.toFixed(2)}`);
-                workOptions.push(
-                    {
-                        workName: factionName,
-                        workType: WorkType.Faction,
-                        secondsToCompletion: neededRepAmount / repGains
-                    }
-                );
-            }
+            )
+            ns.tprintf(`\t${factionName}${getLowPriString(neededRep.isLowPri)}: ${neededRep.neededRep.toFixed(2)} / ${repGains.toFixed(2)}`);
         }
     }
 
-    if (workOptions.length > 0) {
-        return workOptions;
-    } else {
-        return lowPriWorkOptions;
+    return workOptions;
+}
+
+function workOptionSorter(a: WorkOption, b: WorkOption) {
+    if (a.isLoPri && !b.isLoPri) {
+        return 1;
     }
+
+    if (!a.isLoPri && b.isLoPri) {
+        return -1;
+    }
+
+    return a.secondsToCompletion - b.secondsToCompletion;
 }
 
 function workForOptimalOption(ns: NS): boolean {
@@ -270,7 +302,7 @@ function workForOptimalOption(ns: NS): boolean {
 
     // Get faction/company that needs the smallest amount of rep
     if (workOptions.length > 0) {
-        workOptions.sort((a, b) => (a.secondsToCompletion) - (b.secondsToCompletion));
+        workOptions.sort(workOptionSorter);
         const topOption = workOptions[0];
         if (topOption.workType == WorkType.Company) {
             ns.singularity.workForCompany(topOption.workName as CompanyName, false);
@@ -284,7 +316,8 @@ function workForOptimalOption(ns: NS): boolean {
     ns.tprintf(`Work Option Analysis:`);
     for (const workOption of workOptions) {
         const minutesToCompletion = ((workOption.secondsToCompletion) / 60).toFixed(0);
-        ns.tprintf(`\t${workOption.workName}: ${minutesToCompletion} minutes`);
+        const color = workOption.workType == WorkType.Company ? Color.Orange : Color.Blue;
+        ns.tprintf(`\t${color}${workOption.workName}${getLowPriString(workOption.isLoPri)}: ${minutesToCompletion} minutes`);
     }
 
     return false;

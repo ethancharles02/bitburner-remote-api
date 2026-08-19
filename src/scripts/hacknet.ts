@@ -93,9 +93,12 @@ export function buyHacknetNodes(ns: NS) {
 
 export async function main(ns: NS) {
     const doLoop = ns.args.length >= 1 ? Boolean(ns.args[0]) : false;
+    const spendHashes = ns.args.length >= 2 ? Boolean(ns.args[1]) : true;
     if (doLoop) {
         while (true) {
-            spendHacknetHashes(ns, HashUpgrades.getMoney, undefined, -1);
+            if (spendHashes) {
+                spendHacknetHashes(ns, HashUpgrades.getMoney, undefined, -1);
+            }
             buyHacknetNodes(ns);
             // Wait 30 seconds
             await ns.sleep(1000 * 30);

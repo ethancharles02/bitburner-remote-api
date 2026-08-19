@@ -1,6 +1,7 @@
 import { FactionName, NS } from "@ns";
 import { factionNames, neurofluxGovernor } from "./factions/factionConstants"
 import { neededMoneyForRep } from "./factions/meetFactionRequirements";
+import { Color } from "./colors";
 
 type AugmentPurchase = {
     readonly factionName: FactionName;
@@ -101,17 +102,14 @@ export function buyAugments(ns: NS, doBuyNeuroGov: boolean) {
         }
     }
 
-    const blue = "\u001b[38;2;100;100;255m";
-    const red = "\u001b[38;2;255;0;0m";
-
     ns.tprintf(`Augments purchased:`);
     for (const augment of augmentsPurchased) {
-        ns.tprintf(`\t${blue}${augment.augmentName}`);
+        ns.tprintf(`\t${Color.Blue}${augment.augmentName}`);
     }
 
     ns.tprintf(`Failed to purchase:`);
     for (const augment of augmentsToBuy) {
-        ns.tprintf(`\t${red}${augment.augmentName}`);
+        ns.tprintf(`\t${Color.Red}${augment.augmentName}`);
     }
 }
 

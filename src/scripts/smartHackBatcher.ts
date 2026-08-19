@@ -7,13 +7,13 @@ import { buyCloudServers } from "/scripts/cloudServers";
 
 export async function main(ns: NS) {
     ns.disableLog("sleep");
-    const batchResetTimeMs = 1000 * 60 * 10;
+    const batchResetTimeMs = 1000 * 60 * 15;
     // TODO this could be adjusted such that it uses a binary search to check values (with a
     // granularity of 0.01) and find the maximum for the amount of targets?
     const amountToHack = 0.99;
     const targetBufferTime = 100;
     const bufferTimeLimitMs = 50;
-    const maxTargets = 1;
+    const maxTargets = 3;
 
     const doHashUpgrades = true;
     // TODO Consider adjusting the optimal target finding to account for the total cost of hashes it
