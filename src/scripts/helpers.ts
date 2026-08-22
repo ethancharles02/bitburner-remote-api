@@ -132,8 +132,8 @@ export function getMostLucrativeServer(ns: NS) {
     return getSortedLucrativeServers(ns)[0];
 }
 
-export async function runScript(ns: NS, script: string, host: string, waitForFinish: boolean) {
-    const pid = ns.exec(script, host);
+export async function runScript(ns: NS, script: string, host: string, waitForFinish: boolean, ...args: string[]) {
+    const pid = ns.exec(script, host, undefined, ...args);
     if (pid != 0 && waitForFinish) {
         while (ns.isRunning(pid)) {
             await ns.sleep(50);

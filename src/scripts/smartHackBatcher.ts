@@ -7,13 +7,13 @@ import { buyCloudServers } from "/scripts/cloudServers";
 
 export async function main(ns: NS) {
     ns.disableLog("sleep");
-    const batchResetTimeMs = 1000 * 60 * 15;
+    const batchResetTimeMs = 1000 * 60 * 10;
     // TODO this could be adjusted such that it uses a binary search to check values (with a
     // granularity of 0.01) and find the maximum for the amount of targets?
-    const amountToHack = 0.99;
-    const targetBufferTime = 100;
+    const amountToHack = 0.01;
+    const targetBufferTime = 150;
     const bufferTimeLimitMs = 50;
-    const maxTargets = 3;
+    const maxTargets = 1;
 
     const doHashUpgrades = true;
     // TODO Consider adjusting the optimal target finding to account for the total cost of hashes it
@@ -27,7 +27,7 @@ export async function main(ns: NS) {
     const doTorBuy = true;
     const doComputerUpgrade = true;
     // Ram for use by other applications
-    const additionalAllottedRam = 64
+    const additionalAllottedRam = 0
 
     const smartHackRam = ns.getScriptRam("/scripts/smartHack.js");
     const thisScriptRam = ns.getScriptRam("/scripts/smartHackBatcher.js");
@@ -35,7 +35,7 @@ export async function main(ns: NS) {
     // Ram for use of smartHack scripts
     const reservedRam = (smartHackRam * maxTargets) + thisScriptRam + additionalAllottedRam;
     while (true) {
-        await runScript(ns, "/scripts/killBatches.js", "home", true);
+        await runScript(ns, "/scripts/killBatches.js", "home", true, "2");
         if (doComputerUpgrade) {
             await runScript(ns, "/scripts/upgradeComputer.js", "home", true);
         }
@@ -74,7 +74,9 @@ export async function main(ns: NS) {
             // specify how much we need to weaken/grow and the scriptrunner decides which servers to
             // assign the task). The easiest way I imagine this could be done is that when adding
             // scripts to the script runner, you could also include a weight with that script. You
-            // then ask to run scripts with a particular weight allotment
+            // then ask to run scripts with a particular weight allotment. We would need to also
+            // account for the fact that a cut off grow is not equal to the two splits added
+            // together. The weight there needs to be a lambda function to calculate (same thing with hack)
             let requiredThreads = Math.floor(getRequiredThreadsForBatch(ns, target, amountToHack, 1, targetBufferTime));
             while (requiredThreads > 0 && hosts.length > 0 && Object.keys(targetBatchManifest).length < maxTargets) {
                 let usedThreads = 0;

@@ -213,7 +213,7 @@ export async function smartHack(
     // Estimating the higher cost weaken instead of cheaper hack. If this needs to be recalculated, you should wait for all scripts to be finished first since they mess with the calculation
     const estimatedNumAvailableThreads = scriptRunnerManager.getPossibleThreads(batchFile.weaken, batchHostname);
 
-    const lastProcessIds: number[][] = [];
+    const lastProcessIds: number[] = [];
     const oldTime = performance.now();
     let batchSetCount = 0;
     while (performance.now() - oldTime < batchResetTimeMs) {
@@ -247,8 +247,11 @@ export async function smartHack(
         if (batchStats.numBatches > 1) {
             // Adds 0.3 ms of buffer for each script + 1 additional for startup time
             firstBatchExtraBuffer = batchStats.numBatches * (4 * 0.3) + 1;
+            // Takes the buffer time into account (subtracting 100 to be safe for the delay waiting
+            // for process IDs to finish)
+            firstBatchExtraBuffer = Math.max(0, firstBatchExtraBuffer - (batchStats.bufferTimeMs - 100));
 
-            const totalBatchTime = batchStats.threadStats.maxTime + (bufferTimeMs * 4)
+            const totalBatchTime = bufferTimeMs * 4
             batchOffset = Math.ceil(firstBatchExtraBuffer / totalBatchTime);
             ns.tprintf(`\tRemoving ${batchOffset} batch(es) to account for additional buffer time`);
         }
@@ -267,7 +270,7 @@ export async function smartHack(
                 firstProcessIds.push(...await scriptRunnerManager.runScript(batchFile.weaken, batchHostname, false, batchStats.threadStats.numGrowWeakenThreads, false, target, String(batchStats.threadStats.additionalWeakenTimeMs + bufferTimeMs * j++)));
                 j += firstBatchExtraBuffer / bufferTimeMs;
             } else if (i == numBatches - 1) {
-                lastProcessIds.push(await scriptRunnerManager.runScript(batchFile.weaken, batchHostname, false, batchStats.threadStats.numGrowWeakenThreads, false, target, String(batchStats.threadStats.additionalWeakenTimeMs + bufferTimeMs * j++)));
+                lastProcessIds.push(...await scriptRunnerManager.runScript(batchFile.weaken, batchHostname, false, batchStats.threadStats.numGrowWeakenThreads, false, target, String(batchStats.threadStats.additionalWeakenTimeMs + bufferTimeMs * j++)));
             } else {
                 await scriptRunnerManager.runScript(batchFile.weaken, batchHostname, false, batchStats.threadStats.numGrowWeakenThreads, false, target, String(batchStats.threadStats.additionalWeakenTimeMs + bufferTimeMs * j++));
             }
@@ -275,6 +278,8 @@ export async function smartHack(
         let isSafe = false;
         while (firstProcessIds.some(id => ns.isRunning(id))) {
             isSafe = true;
+            // Due to the resolution of this, the additional buffer time needs to account for it,
+            // otherwise this could prevent proper timing
             await ns.sleep(50);
         }
 
@@ -291,7 +296,7 @@ export async function smartHack(
         batchSetCount += 1;
     }
     // Wait till the last process is done
-    while (lastProcessIds.some(ids => ids.some(id => ns.isRunning(id)))) {
+    while (lastProcessIds.some(id => ns.isRunning(id))) {
         await ns.sleep(100);
     }
 }

@@ -72,16 +72,12 @@ export function buyAugments(ns: NS, doBuyNeuroGov: boolean) {
                 // Update player (for money available)
                 player = ns.getPlayer();
                 const curPurchaseRep = ns.singularity.getFactionRep(purchaseFaction);
-                const neededRep = curPurchaseRep - ns.singularity.getAugmentationRepReq(neurofluxGovernor);
+                const neededRep = ns.singularity.getAugmentationRepReq(neurofluxGovernor) - curPurchaseRep;
                 if (neededRep > 0) {
                     const neededMoney = neededMoneyForRep(ns, ns.singularity.getAugmentationRepReq(neurofluxGovernor), player)
                     const totalCost = neededMoney + ns.singularity.getAugmentationPrice(neurofluxGovernor);
                     if (totalCost <= player.money) {
                         ns.singularity.donateToFaction(purchaseFaction, neededMoney);
-                        // TODO just for testing. Remove this when you have confidence
-                        if (ns.singularity.getFactionRep(purchaseFaction) < ns.singularity.getAugmentationRepReq(neurofluxGovernor)) {
-                            throw Error(`Didn't purchase the needed amount of rep (${ns.singularity.getFactionRep(purchaseFaction)} instead of ${ns.singularity.getAugmentationRepReq(neurofluxGovernor)}), double check money to rep formula`);
-                        }
                     }
                 }
             }
